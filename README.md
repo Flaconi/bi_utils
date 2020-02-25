@@ -3,12 +3,21 @@ The goal of this repo is to have a common utils library that will be shared betw
 
 ## Content
 This directory should contain utility functions so that we can avoid repeating ourselves.
-Since we can only package a single directory into a docker image, you should copy the utils function from this directory
-and use it for each of your projects (i.e. for each docker image in this repo).
+You can install this package in your Docker image via:
+    
+    RUN pip install git+https://github.com/Flaconi/utils.git
 
-### Functions included
+Then in your Python script, you can import it:
+
+    from utils import utils
+
+    # usage
+    logger = utils.set_logging()
+    utils.deployment(prod=True, dev=True)
+
+
+### Functions included (among others to come)
 - `deployment()` function  - to make sure the code is the same in both envs - it simply not runs in DEV or PROD if this is not desired
 - `set_logging()` - to avoid copy-pasting logger setup
 - `send_slack_alert()` - generic function to send Slack message
 - helper functions ex. `establish_boto3_client()` to establish Boto3 client for any AWS service
-
