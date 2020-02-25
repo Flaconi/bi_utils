@@ -14,3 +14,4 @@ setup(
 
 # pip install git+ssh://git@github.com/Flaconi/utils.git - didn't work
 # pip install git+https://github.com/Flaconi/utils.git 
+# pip install git+https://$GITHUB_TOKEN@github.com/chillaranand/library.git
