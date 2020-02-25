@@ -125,9 +125,9 @@ def merge_tmp_into_target_tbl(exa_connection, dataframe, pk_columns,
     - merges the Temp table into original table
     :param exa_connection: connection object to Exasol
     :param dataframe: any pandas dataframe
-    :param pk_columns: PK columns as comma separated string ex. "PRODUCT_ID,SEASONALITY_BEGIN"
+    :param pk_columns: PK columns as comma separated string ex. "COL1,COL2"
     :param exasol_schema: ex. STAGE_FLAT_FILE
-    :param exasol_table: ex. ATTRIBUTE_CATEGORIZATION
+    :param exasol_table: ex. TABLE_NAME
     :param temp_schema: can be explicitly defined if the use case deviates from standard form: SCHEMA.TBL + SCHEMA_TMP.TBL
     :param temp_tbl: can be explicitly defined if the use case deviates from standard form: SCHEMA.TBL + SCHEMA_TMP.TBL
     :return: nothing, just load transformed df into Exasol
