@@ -11,3 +11,4 @@ and use it for each of your projects (i.e. for each docker image in this repo).
 - `set_logging()` - to avoid copy-pasting logger setup
 - `send_slack_alert()` - generic function to send Slack message
 - helper functions ex. `establish_boto3_client()` to establish Boto3 client for any AWS service
+
