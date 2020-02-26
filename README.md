@@ -5,11 +5,11 @@ The goal of this repo is to have a common utility library that will be shared be
 This directory should contain utility functions so that we can avoid repeating ourselves.
 You can install this package in your Docker image via:
     
-    RUN pip install git+https://github.com/Flaconi/bi-utils.git
+    RUN pip install git+https://github.com/Flaconi/bi_utils.git
 
 Then in your Python script, you can import it:
 
-    from bi-utils import utils
+    from bi_utils import utils
 
     # usage
     logger = utils.set_logging()
@@ -23,4 +23,4 @@ Then in your Python script, you can import it:
 - helper functions ex. `establish_boto3_client()` to establish Boto3 client for any AWS service
 
 # Docs
-https://flaconi.atlassian.net/wiki/spaces/1BI/pages/263946847/How+to+use+bi-utils+package+in+bi-python+projects 
+https://flaconi.atlassian.net/wiki/spaces/1BI/pages/263946847/How+to+use+bi_utils+package+in+bi-python+projects 
