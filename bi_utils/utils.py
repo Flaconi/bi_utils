@@ -7,9 +7,12 @@ from botocore.exceptions import NoCredentialsError
 import pandas as pd
 import logging
 import sys
+import os
+import pyexasol
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 import json
+from functools import reduce
 
 loggers = {}
 
@@ -174,6 +177,52 @@ def merge_tmp_into_target_tbl(exa_connection, dataframe, pk_columns,
     logger.info("-------------- MERGE TO {}.{} COMPLETE -----------------------".format(exasol_schema, exasol_table))
 
 
+def return_exa_conn(exa_user='EXUSER', exa_pwd='EXPWD', exa_dsn='EXDSN'):
+    """
+    :return: connection object
+    """
+    logger = set_logging()
+    exasol_user = os.environ.get(exa_user)
+    exasol_pwd = os.environ.get(exa_pwd)
+    exasol_dsn = os.environ.get(exa_dsn)
+    conn = pyexasol.connect(user=exasol_user, password=exasol_pwd, dsn=exasol_dsn)
+    logger.info('Successfully connected to Exasol.')
+    return conn
+
+
+def return_df_from_sql_script(filename, exa_conn):
+    """
+    :param filename: SQL script ex. "script.sql"
+    :param exa_conn: name of the connection object
+    :return: pandas df
+    """
+    logger = set_logging()
+    sql_script = open(filename, 'r')  # Open and read the file as a single buffer
+    query = sql_script.read()
+    sql_script.close()
+    try:
+        tbl_from_sql = exa_conn.export_to_pandas(query)
+        return tbl_from_sql
+    except Exception as exc:
+        logger.info(f"Couldn't read the query. Error msg: {exc}")
+
+
+def execute_sql_script(filename, exa_conn):
+    """
+    :param filename: SQL script ex. "script.sql"
+    :param exa_conn: name of the connection object
+    :return: nothing, just execute SQL in Exasol
+    """
+    logger = set_logging()
+    sql_script = open(filename, 'r')  # Open and read the file as a single buffer
+    query = sql_script.read()
+    sql_script.close()
+    try:
+        exa_conn.execute(query)
+    except Exception as exc:
+        logger.info(f"Couldn't read the query. Error msg: {exc}")
+
+
 # =================================================================================================================
 # HELPER FUNCTIONS
 # =================================================================================================================
@@ -187,7 +236,7 @@ def print_full(df_to_print):
     pd.set_option('display.max_columns', None)
     pd.set_option('display.width', 2000)
     pd.set_option('display.float_format', '{:20,.2f}'.format)
-    pd.set_option('display.max_colwidth', -1)
+    # pd.set_option('display.max_colwidth', -1)
     print(df_to_print)
     pd.reset_option('display.max_rows')
     pd.reset_option('display.max_columns')
@@ -235,3 +284,39 @@ def establish_boto3_client(aws_access_key, aws_secret_key, aws_service='s3', reg
             logger.warning(f"Unexpected error: {exc}")
         return False
     return s3_client
+
+
+def extract_key(dictionary, path):
+    """
+    to get elements from a dict
+    :param dictionary: dict from JSON file
+    :param path: defines how to access nested objects in a df ex. name.surname instead of [name][surname]
+    :return: nested dict element if the key exists in the dict, otherwise returns None
+    """
+    keys = path.split('.')  # to get deeper level key
+    return reduce(lambda d, key: d[int(key)] if isinstance(d, list) else d.get(key) if d else None, keys, dictionary)
+
+
+def parse_timestamp(x):
+    """
+    timestamps that are in the format of 2019-12-12T15:22:04.558Z
+    :param x: wrong timestamp format
+    :return: corrected timestamp format compatible with Exasol as string
+    """
+    if x is None:
+        return None
+    else:
+        return x[0:10] + ' ' + x[11:-1]
+
+
+def check_for_key(x, key_name='id'):
+    """
+    helper method after pd explode
+    :param x: dict
+    :param key_name: dict key
+    :return: value for specific key if this key exists
+    """
+    if type(x) == dict:
+        return x.get(key_name, "empty")
+    else:
+        return None
