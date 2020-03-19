@@ -177,7 +177,7 @@ def merge_tmp_into_target_tbl(exa_connection, dataframe, pk_columns,
     logger.info("-------------- MERGE TO {}.{} COMPLETE -----------------------".format(exasol_schema, exasol_table))
 
 
-def return_exa_conn(exa_user='EXUSER', exa_pwd='EXPWD', exa_dsn='EXDSN'):
+def return_exa_conn(exa_user='DWHEXA_USER', exa_pwd='DWHEXA_PASSWORD', exa_dsn='DWHEXA_HOST'):
     """
     :return: connection object
     """
