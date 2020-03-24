@@ -323,7 +323,7 @@ def check_for_key(x, key_name='id'):
 
 def get_ct_token(CT_CLIENT_ID, CT_CIENT_PWD):
     """
-    simple hhtp request to get bearer token from commercetools 
+    simple http request to get bearer token from commercetools 
     :param CT_CLIENT_ID: commercetool client id
     :param CT_CIENT_PWD: commercetool client password
     :return headers for http request to commercetools
