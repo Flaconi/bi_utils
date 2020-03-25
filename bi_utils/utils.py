@@ -9,6 +9,7 @@ import logging
 import sys
 import os
 import pyexasol
+import requests
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 import json
