@@ -175,6 +175,9 @@ def merge_tmp_into_target_tbl(exa_connection, dataframe, pk_columns,
     merge_query += ''');'''
     connection.execute(merge_query.format(schema=exasol_schema, tbl=exasol_table,
                                           schema_tmp=tmp_schema, tbl_tmp=tmp_table))
+    check_df = connection.export_to_pandas(f"""SELECT COUNT(*) AS COUNT_ROWS FROM {exasol_schema}.{exasol_table} 
+                                    WHERE TO_DATE(UPDATE_TIMESTAMP) = CURRENT_DATE;""")
+    logger.info(f"""{check_df["COUNT_ROWS"][0]} rows inserted today.""")
     logger.info("-------------- MERGE TO {}.{} COMPLETE -----------------------".format(exasol_schema, exasol_table))
 
 
@@ -322,6 +325,7 @@ def check_for_key(x, key_name='id'):
     else:
         return None
 
+
 def get_ct_token(CT_CLIENT_ID, CT_CIENT_PWD):
     """
     simple http request to get bearer token from commercetools 
@@ -329,11 +333,9 @@ def get_ct_token(CT_CLIENT_ID, CT_CIENT_PWD):
     :param CT_CIENT_PWD: commercetool client password
     :return headers for http request to commercetools
     """
-    data = {
-        'grant_type': 'client_credentials'
-           }
+    data = {'grant_type': 'client_credentials'}
+    response = requests.post('https://auth.europe-west1.gcp.commercetools.com/oauth/token', data=data,
+                             auth=(CT_CLIENT_ID, CT_CIENT_PWD))
+    headers = {'Authorization': 'Bearer ' + str(response.json()['access_token']), }
 
-    response = requests.post('https://auth.europe-west1.gcp.commercetools.com/oauth/token', data=data, auth=(CT_CLIENT_ID, CT_CIENT_PWD))
-    headers = { 'Authorization': 'Bearer ' + str(response.json()['access_token']),}
-    
     return headers
