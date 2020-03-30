@@ -175,6 +175,9 @@ def merge_tmp_into_target_tbl(exa_connection, dataframe, pk_columns,
     merge_query += ''');'''
     connection.execute(merge_query.format(schema=exasol_schema, tbl=exasol_table,
                                           schema_tmp=tmp_schema, tbl_tmp=tmp_table))
+    check_df = connection.export_to_pandas(f"""SELECT COUNT(*) AS COUNT_ROWS FROM {exasol_schema}.{exasol_table} 
+                                    WHERE TO_DATE(UPDATE_TIMESTAMP) = CURRENT_DATE;""")
+    logger.info(f"""{check_df["COUNT_ROWS"][0]} rows inserted today.""")
     logger.info("-------------- MERGE TO {}.{} COMPLETE -----------------------".format(exasol_schema, exasol_table))
 
 
@@ -321,7 +324,8 @@ def check_for_key(x, key_name='id'):
         return x.get(key_name, "empty")
     else:
         return None
-
+        
+        
 def get_ct_token(CT_CLIENT_ID, CT_CLIENT_PWD):
     """
     simple http request to get bearer token from commercetools 
