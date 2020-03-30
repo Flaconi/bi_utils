@@ -324,18 +324,20 @@ def check_for_key(x, key_name='id'):
         return x.get(key_name, "empty")
     else:
         return None
-
-
-def get_ct_token(CT_CLIENT_ID, CT_CIENT_PWD):
+        
+        
+def get_ct_token(CT_CLIENT_ID, CT_CLIENT_PWD):
     """
     simple http request to get bearer token from commercetools 
     :param CT_CLIENT_ID: commercetool client id
-    :param CT_CIENT_PWD: commercetool client password
+    :param CT_CLIENT_PWD: commercetool client password
     :return headers for http request to commercetools
     """
-    data = {'grant_type': 'client_credentials'}
-    response = requests.post('https://auth.europe-west1.gcp.commercetools.com/oauth/token', data=data,
-                             auth=(CT_CLIENT_ID, CT_CIENT_PWD))
-    headers = {'Authorization': 'Bearer ' + str(response.json()['access_token']), }
+    data = {
+        'grant_type': 'client_credentials'
+           }
 
+    response = requests.post('https://auth.europe-west1.gcp.commercetools.com/oauth/token', data=data, auth=(CT_CLIENT_ID, CT_CLIENT_PWD))
+    headers = { 'Authorization': 'Bearer ' + str(response.json()['access_token']),}
+    
     return headers
