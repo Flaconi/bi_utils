@@ -14,6 +14,8 @@ from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 import json
 from functools import reduce
+from os.path import join, dirname
+from dotenv import load_dotenv
 
 loggers = {}
 
@@ -341,3 +343,43 @@ def get_ct_token(CT_CLIENT_ID, CT_CLIENT_PWD):
     headers = { 'Authorization': 'Bearer ' + str(response.json()['access_token']),}
     
     return headers
+
+
+def print_merge_query(pk_columns,exasol_schema, exasol_table, temp_schema=None, temp_tbl=None,
+                      exa_user='DWHEXA_USER', exa_pwd='DWHEXA_PASSWORD', exa_dsn='DWHEXA_HOST', env_file=".env"):
+    """Usage example:
+    print_merge_query(pk_columns="VISIT_DATE, RETURNING_CUSTOMER, DEVICE_TYPE, \
+                        CHANNEL_LVL_1, CHANNEL_LVL_2, COST_CATEGORY, COSTCENTER_NAME, ACCOUNT_NAME, CREDITOR, SITE_DOMAIN",
+                        exasol_schema="BUSINESS_VAULT", exasol_table="ATTRIBUTED_MARKETING_COSTS_VISITS")
+    """
+    dotenv_path = join(dirname(""), '.env')
+    load_dotenv(dotenv_path)
+    connection = return_exa_conn(exa_user='DWHEXA_USER', exa_pwd='DWHEXA_PASSWORD', exa_dsn='DWHEXA_HOST')
+    tmp_table = exasol_table if temp_tbl is None else temp_tbl
+    tmp_schema = exasol_schema + "_TMP" if temp_schema is None else temp_schema
+    dataframe = connection.export_to_pandas(f"SELECT * FROM {tmp_schema}.{tmp_table}")
+    pk_columns_list = [str(item).strip() for item in pk_columns.split(',')]
+    merge_query = '''MERGE INTO {schema}.{tbl} target_tbl USING {schema_tmp}.{tbl_tmp} tmp ON ('''
+    for i in pk_columns_list:
+        merge_query += 'target_tbl.\"' + i + '\"' + ''' = tmp."''' + i + '\" AND '
+        # example: ON (target_tbl."BRAND" = tmp."BRAND" AND target_tbl."CATEGORY" = tmp."CATEGORY")
+    merge_query = merge_query[:-5] + ''') '''
+    merge_query += '''WHEN MATCHED THEN UPDATE SET target_tbl."UPDATE_TIMESTAMP" = tmp."UPDATE_TIMESTAMP"'''
+
+    # remove pk_columns, otherwise we would be updating columns of ON-condition
+    cols_not_to_merge = pk_columns_list + ["INSERT_TIMESTAMP", "UPDATE_TIMESTAMP"]
+    dataframe.columns = dataframe.columns.str.strip()
+    cols_merge = [col for col in dataframe.columns if col not in cols_not_to_merge]
+    for i in cols_merge:
+        merge_query += ''', target_tbl."''' + i.strip() + '''" = tmp."''' + i.strip() + '''"'''
+
+    # when not matched then insert all cols incl. PK columns
+    merge_query += ''' WHEN NOT MATCHED THEN INSERT ("INSERT_TIMESTAMP", "UPDATE_TIMESTAMP", ''' + \
+                   '\"' + '", "'.join(pk_columns_list + cols_merge) + '\"' + \
+                   ''') VALUES (tmp."INSERT_TIMESTAMP", tmp."UPDATE_TIMESTAMP"'''
+
+    for i in pk_columns_list + cols_merge:
+        merge_query += ''', tmp."''' + i.strip() + '''"'''
+
+    merge_query += ''');'''
+    print(merge_query.format(schema=exasol_schema, tbl=exasol_table, schema_tmp=tmp_schema, tbl_tmp=tmp_table))
