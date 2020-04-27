@@ -383,3 +383,33 @@ def print_merge_query(pk_columns,exasol_schema, exasol_table, temp_schema=None, 
 
     merge_query += ''');'''
     print(merge_query.format(schema=exasol_schema, tbl=exasol_table, schema_tmp=tmp_schema, tbl_tmp=tmp_table))
+
+
+def explode_list_cols_and_normalize_json(dframe, list_cols):
+    shape_before_exploding = dframe.shape
+    # explode all lists so that we get nice dict
+    for col in dframe.columns:
+        try:
+            if col in list_cols:
+                logger.info(f"Exploding {col}")
+                dframe = dframe.explode(col).reset_index(drop=True)
+                # json_normalize all those columns and concat them back to the original df
+                temp_df = dframe[dframe[col].notnull()]
+                if not temp_df.empty:
+                    temp_df = pd.json_normalize(temp_df[col]).add_prefix(f"{col}__")
+                    dframe = pd.concat([dframe, temp_df], axis=1, ignore_index=False)
+        except Exception as exc:
+            logger.info(f"Error: {exc}")
+    shape_after_exploding = dframe.shape
+    logger.info(f"Shape before: {shape_before_exploding}, "
+          f"Shape after: {shape_after_exploding}")
+    return dframe
+
+
+def check_list_cols_in_df(dframe):
+    all_dtypes = (dframe.applymap(type) == list).all()
+    list_cols = all_dtypes.index[all_dtypes].tolist()
+    if len(list_cols) > 0:
+        return True, list_cols
+    else:
+        return False, list_cols
