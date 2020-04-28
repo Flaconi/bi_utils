@@ -431,7 +431,8 @@ def process_response_from_commercetools(resp_dict, columns=[]):
     :param columns: list of columns to process 
     :return: normalized df
     """
-
+    logger = set_logging()
+    
     if len(columns) > 0: # in case only certain columns should be normalized /considered
         df = pd.json_normalize(resp_dict)
         this_df = pd.DataFrame(df[columns])
