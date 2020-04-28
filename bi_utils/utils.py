@@ -386,6 +386,10 @@ def print_merge_query(pk_columns,exasol_schema, exasol_table, temp_schema=None, 
 
 
 def explode_list_cols_and_normalize_json(dframe, list_cols):
+    """
+    helper function for commercetool data normalization
+    """
+    logger = set_logging()
     shape_before_exploding = dframe.shape
     # explode all lists so that we get nice dict
     for col in dframe.columns:
@@ -407,10 +411,76 @@ def explode_list_cols_and_normalize_json(dframe, list_cols):
 
 
 def check_list_cols_in_df(dframe):
+    """
+    helper function for commercetool data normalization
+    """
+    logger = set_logging()
     all_dtypes = (dframe.applymap(type) == list).all()
     list_cols = all_dtypes.index[all_dtypes].tolist()
     if len(list_cols) > 0:
         return True, list_cols
     else:
         return False, list_cols
+
+
+def process_response_from_commercetools(resp_dict, columns=[]):
+    """
+    if columns is empty all elements from the response are processed
+    if not only relevant columns will get normalized
+    :param resp_dict: reponse from API
+    :param columns: list of columns to process 
+    :return: normalized df
+    """
+
+    if len(columns) > 0: # in case only certain columns should be normalized /considered
+        df = pd.json_normalize(resp_dict)
+        this_df = pd.DataFrame(df[columns])
+    else:
+        this_df = pd.json_normalize(resp_dict)
+
+    while check_list_cols_in_df(this_df)[0]:  # while True
+        all_list_cols = check_list_cols_in_df(this_df)[1]
+        this_df = explode_list_cols_and_normalize_json(this_df, all_list_cols)
+    else:
+        logger.info("No more list cols! All done")
+    return this_df
+
+
+def basic_ct_pagination(CT_CLIENT_ID, CT_CLIENT_PWD, ENDPOINT, columns=[]):
+    """
+    simple batch pagnination for each endpoint with the option to define whether only certain
+    columns should be normalized
+    :param CT_CLIENT_ID: CLIENT ID from commercetool for auth
+    :param CT_CLIENT_PWD: CLIENT PWD from commercetool for auth
+    :param ENDPOINT: e.g. products, categories, ...
+    :param columns: default all - otherwise needs specification
+    :return: df
+    """
+    logger = set_logging()
+    ''' first making initial API request and then pagination '''
+    headers = get_ct_token(CT_CLIENT_ID, CT_CLIENT_PWD)
+
+    x = 0
+    logger.info('Current offset: %s', x)
+    df = pd.DataFrame()
+
+    initial_request = requests.get('https://api.europe-west1.gcp.commercetools.com/flaconi-dev/' + ENDPOINT + '?limit=500', 
+                                    headers=headers)
+    
+    df = process_response_from_commercetools(initial_request.json()['results'], columns)
+
+    while True:
         
+        x +=  initial_request.json()['count'] + initial_request.json()['offset'] 
+        logger.info('New offset: : %s', x)
+
+        response = requests.get('https://api.europe-west1.gcp.commercetools.com/flaconi-dev/' + ENDPOINT + '?limit=500&offset=0' + str(x), 
+                                headers=headers)
+        
+        if response.json()['offset'] < initial_request.json()['total']:
+            tmp = process_response_from_commercetools(initial_request.json()['results'], columns)
+            df = pd.concat([tmp, df]) # combine df's
+        else:
+            break
+
+    return df
