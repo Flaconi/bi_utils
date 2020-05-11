@@ -475,11 +475,11 @@ def basic_ct_pagination(CT_CLIENT_ID, CT_CLIENT_PWD, ENDPOINT, columns=[]):
         x +=  initial_request.json()['count'] + initial_request.json()['offset'] 
         logger.info('New offset: : %s', x)
 
-        response = requests.get('https://api.europe-west1.gcp.commercetools.com/flaconi-dev/' + ENDPOINT + '?limit=500&offset=0' + str(x), 
+        response = requests.get('https://api.europe-west1.gcp.commercetools.com/flaconi-dev/' + ENDPOINT + '?limit=500&offset=' + str(x), 
                                 headers=headers)
         
         if response.json()['offset'] < initial_request.json()['total']:
-            tmp = process_response_from_commercetools(initial_request.json()['results'], columns)
+            tmp = process_response_from_commercetools(response.json()['results'], columns)
             df = pd.concat([tmp, df]) # combine df's
         else:
             break
