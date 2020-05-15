@@ -487,38 +487,40 @@ def basic_ct_pagination(CT_CLIENT_ID, CT_CLIENT_PWD, ENDPOINT, columns=[]):
     return df
 
 
-def ct_pagination_by_id(CT_CLIENT_ID, CT_CLIENT_PWD, ENDPOINT, columns=[]):
+def ct_pagination_by_sort_key(CT_CLIENT_ID, CT_CLIENT_PWD, ENDPOINT, SORT_KEY, columns=[]):
     """
     simple batch pagnination for each endpoint with the option to define whether only certain
     columns should be normalized - and results are sorted (recommended way)
     :param CT_CLIENT_ID: CLIENT ID from commercetool for auth
     :param CT_CLIENT_PWD: CLIENT PWD from commercetool for auth
     :param ENDPOINT: e.g. products, categories, ...
+    :param SORT_KEY: column to sort by
     :param columns: default all - otherwise needs specification
     :return: df
     """
     logger = set_logging()
+
     ''' first making initial API request and then pagination '''
     headers = get_ct_token(CT_CLIENT_ID, CT_CLIENT_PWD)
 
-    x = 0
-    logger.info('Current offset: %s', x)
-    df = pd.DataFrame()
-
-    initial_request = requests.get('https://api.europe-west1.gcp.commercetools.com/flaconi-dev/' + ENDPOINT + '?limit=500&sort=id+asc', 
+    initial_request = requests.get('https://api.europe-west1.gcp.commercetools.com/flaconi-dev/' + ENDPOINT + '?limit=500&sort=' + SORT_KEY + '+asc', 
                                     headers=headers)
     
     df = process_response_from_commercetools(initial_request.json()['results'], columns)
 
-    while True:
-        
-        x +=  initial_request.json()['count'] + initial_request.json()['offset'] 
-        logger.info('New offset: : %s', x)
+    last_sort_value = initial_request.json()['results'][-1][SORT_KEY]
 
-        response = requests.get('https://api.europe-west1.gcp.commercetools.com/flaconi-dev/' + ENDPOINT + '?limit=500&offset=' + str(x) + '&sort=id+asc', 
-                                headers=headers)
+    logger.info("First sort value: " + last_sort_value)
+
+    while True:
+
+        response = requests.get('https://api.europe-west1.gcp.commercetools.com/flaconi-dev/' + 
+                                ENDPOINT + '?limit=500&sort=' + SORT_KEY + '+asc&where=' + SORT_KEY + '%3E"' + last_sort_value + '"', headers=headers)
+
         
-        if response.json()['offset'] < initial_request.json()['total']:
+        if len(response.json()['results']) > 0:
+            last_sort_value = response.json()['results'][-1][SORT_KEY]
+            logger.info("Current sort value: " + last_sort_value)
             tmp = process_response_from_commercetools(response.json()['results'], columns)
             df = pd.concat([tmp, df]) # combine df's
         else:
