@@ -485,3 +485,43 @@ def basic_ct_pagination(CT_CLIENT_ID, CT_CLIENT_PWD, ENDPOINT, columns=[]):
             break
 
     return df
+
+
+def ct_pagination_by_id(CT_CLIENT_ID, CT_CLIENT_PWD, ENDPOINT, columns=[]):
+    """
+    simple batch pagnination for each endpoint with the option to define whether only certain
+    columns should be normalized - and results are sorted (recommended way)
+    :param CT_CLIENT_ID: CLIENT ID from commercetool for auth
+    :param CT_CLIENT_PWD: CLIENT PWD from commercetool for auth
+    :param ENDPOINT: e.g. products, categories, ...
+    :param columns: default all - otherwise needs specification
+    :return: df
+    """
+    logger = set_logging()
+    ''' first making initial API request and then pagination '''
+    headers = get_ct_token(CT_CLIENT_ID, CT_CLIENT_PWD)
+
+    x = 0
+    logger.info('Current offset: %s', x)
+    df = pd.DataFrame()
+
+    initial_request = requests.get('https://api.europe-west1.gcp.commercetools.com/flaconi-dev/' + ENDPOINT + '?limit=500&sort=id+asc', 
+                                    headers=headers)
+    
+    df = process_response_from_commercetools(initial_request.json()['results'], columns)
+
+    while True:
+        
+        x +=  initial_request.json()['count'] + initial_request.json()['offset'] 
+        logger.info('New offset: : %s', x)
+
+        response = requests.get('https://api.europe-west1.gcp.commercetools.com/flaconi-dev/' + ENDPOINT + '?limit=500&offset=' + str(x) + '&sort=id+asc', 
+                                headers=headers)
+        
+        if response.json()['offset'] < initial_request.json()['total']:
+            tmp = process_response_from_commercetools(response.json()['results'], columns)
+            df = pd.concat([tmp, df]) # combine df's
+        else:
+            break
+
+    return df
