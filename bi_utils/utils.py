@@ -522,8 +522,9 @@ def ct_pagination_by_sort_key(CT_CLIENT_ID, CT_CLIENT_PWD, ENDPOINT, SORT_KEY, c
             last_sort_value = response.json()['results'][-1][SORT_KEY]
             logger.info("Current sort value: " + last_sort_value)
             tmp = process_response_from_commercetools(response.json()['results'], columns)
-            df = pd.concat([tmp, df]) # combine df's
+            df = pd.concat([tmp, df], copy = False) # combine df's
             del tmp
+            del response
         else:
             break
 
