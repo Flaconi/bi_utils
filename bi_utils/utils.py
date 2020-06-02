@@ -503,7 +503,7 @@ def ct_pagination_by_sort_key(CT_CLIENT_ID, CT_CLIENT_PWD, ENDPOINT, SORT_KEY, c
     ''' first making initial API request and then pagination '''
     headers = get_ct_token(CT_CLIENT_ID, CT_CLIENT_PWD)
 
-    initial_request = requests.get('https://api.europe-west1.gcp.commercetools.com/flaconi-dev/' + ENDPOINT + '?limit=500&sort=' + SORT_KEY + '+asc', 
+    initial_request = requests.get('https://api.europe-west1.gcp.commercetools.com/flaconi-dev/' + ENDPOINT + '?limit=500&withTotal=false&sort=' + SORT_KEY + '+asc', 
                                     headers=headers)
     
     df = process_response_from_commercetools(initial_request.json()['results'], columns)
@@ -515,7 +515,52 @@ def ct_pagination_by_sort_key(CT_CLIENT_ID, CT_CLIENT_PWD, ENDPOINT, SORT_KEY, c
     while True:
 
         response = requests.get('https://api.europe-west1.gcp.commercetools.com/flaconi-dev/' + 
-                                ENDPOINT + '?limit=500&sort=' + SORT_KEY + '+asc&where=' + SORT_KEY + '%3E"' + last_sort_value + '"', headers=headers)
+                                ENDPOINT + '?limit=500&withTotal=false&sort=' + SORT_KEY + '+asc&where=' + SORT_KEY + '%3E"' + last_sort_value + '"', headers=headers)
+
+        
+        if len(response.json()['results']) > 0:
+            last_sort_value = response.json()['results'][-1][SORT_KEY]
+            logger.info("Current sort value: " + last_sort_value)
+            tmp = process_response_from_commercetools(response.json()['results'], columns)
+            df = pd.concat([tmp, df], copy = False) # combine df's
+            del tmp
+            del response
+        else:
+            break
+
+    return df
+
+
+
+def ct_pagination_current_products_by_sort_key(CT_CLIENT_ID, CT_CLIENT_PWD, ENDPOINT, SORT_KEY, columns=[]):
+    """
+    simple batch pagnination for product-projections (to just get the current and not staged data)
+    columns should be normalized - and results are sorted (recommended way)
+    :param CT_CLIENT_ID: CLIENT ID from commercetool for auth
+    :param CT_CLIENT_PWD: CLIENT PWD from commercetool for auth
+    :param ENDPOINT: e.g. products, categories, ...
+    :param SORT_KEY: column to sort by
+    :param columns: default all - otherwise needs specification
+    :return: df
+    """
+    logger = set_logging()
+
+    ''' first making initial API request and then pagination '''
+    headers = get_ct_token(CT_CLIENT_ID, CT_CLIENT_PWD)
+
+    initial_request = requests.get('https://api.europe-west1.gcp.commercetools.com/flaconi-dev/' + ENDPOINT + '?limit=500&staged=false&withTotal=false&sort=' + SORT_KEY + '+asc', 
+                                    headers=headers)
+    
+    df = process_response_from_commercetools(initial_request.json()['results'], columns)
+
+    last_sort_value = initial_request.json()['results'][-1][SORT_KEY]
+
+    logger.info("First sort value: " + last_sort_value)
+
+    while True:
+
+        response = requests.get('https://api.europe-west1.gcp.commercetools.com/flaconi-dev/' + 
+                                ENDPOINT + '?limit=500&staged=false&withTotal=false&sort=' + SORT_KEY + '+asc&where=' + SORT_KEY + '%3E"' + last_sort_value + '"', headers=headers)
 
         
         if len(response.json()['results']) > 0:
