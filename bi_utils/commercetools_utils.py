@@ -139,7 +139,6 @@ def basic_ct_pagination(ct_client_id, ct_client_pwd, endpoint, columns=None, col
         'https://api.europe-west1.gcp.commercetools.com/flaconi-dev/' + endpoint + '?limit=500',
         headers=headers)
     df = process_response_from_commercetools(initial_request.json()['results'], columns, cols_to_exclude)
-    list_of_dfs = [df]
 
     while True:
         x += initial_request.json()['count'] + initial_request.json()['offset']
@@ -150,10 +149,10 @@ def basic_ct_pagination(ct_client_id, ct_client_pwd, endpoint, columns=None, col
 
         if response.json()['offset'] < initial_request.json()['total']:
             tmp = process_response_from_commercetools(response.json()['results'], columns, cols_to_exclude)
-            list_of_dfs.append(tmp)
+            df = pd.concat([tmp, df])  # combine df's
         else:
             break
-    df = pd.concat(list_of_dfs)
+    logger.info(f"Shape of the final df after pagination: {df.shape}")
     return df
 
 
@@ -188,29 +187,30 @@ def ct_pagination_by_sort_key(ct_client_id, clt_client_pwd, endpoint, sort_key, 
         full_url_init_req = init_req_url + '&staged=false'
 
     # make the initial API request and then start pagination
+    logger.info(f"INITIAL REQUEST URL: {full_url_init_req}")
     initial_request = requests.get(full_url_init_req, headers=headers)
     df = process_response_from_commercetools(initial_request.json()['results'], columns, cols_to_exclude)
-    list_of_dfs = [df]
     last_sort_value = initial_request.json()['results'][-1][sort_key]
-    logger.info("First sort value: " + last_sort_value)
-
-    # make subsequent API requests
-    subs_req_url = base_url + endpoint + '?limit=500&sort=' + sort_key + '+asc&where=' + sort_key + '%3E"' + last_sort_value + '"&withTotal=false'
-    if staged:
-        full_subs_req_url = subs_req_url
-    else:
-        full_subs_req_url = subs_req_url + '&staged=false'
+    logger.info("Current sort value: " + last_sort_value)
 
     while True:
+        # make subsequent API requests
+        subs_req_url = base_url + endpoint + '?limit=500&withTotal=false&sort=' + sort_key + '+asc&where=' + sort_key + '%3E"' + last_sort_value + '"'
+        if staged:
+            full_subs_req_url = subs_req_url
+        else:
+            full_subs_req_url = subs_req_url + '&staged=false'
+
+        logger.info(f'Current URL: {full_subs_req_url}')
         response = requests.get(full_subs_req_url, headers=headers)
         if len(response.json()['results']) > 0:
             last_sort_value = response.json()['results'][-1][sort_key]
-            logger.info("Current sort value: " + last_sort_value)
+            logger.info("Next sort value: " + last_sort_value)
             tmp = process_response_from_commercetools(response.json()['results'], columns, cols_to_exclude)
-            list_of_dfs.append(tmp)
+            df = pd.concat([tmp, df], copy=False)  # combine df's
             del tmp
             del response
         else:
             break
-    df = pd.concat(list_of_dfs)
+    logger.info(f"Shape of the final df after pagination: {df.shape}")
     return df
