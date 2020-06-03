@@ -65,7 +65,7 @@ def explode_list_cols_and_normalize_json(dframe, list_cols):
             logger.info(f"Error: {exc}")
     shape_after_exploding = dframe.shape
     logger.info(f"Shape before: {shape_before_exploding}, "
-                f"Shape after: {shape_after_exploding}\n")
+                f"Shape after: {shape_after_exploding}")
     return dframe
 
 
@@ -115,7 +115,7 @@ def process_response_from_commercetools(resp_dict, columns=None, cols_to_exclude
         all_list_cols = check_list_cols_in_df(this_df, cols_to_exclude_from_explode)[1]
         this_df = explode_list_cols_and_normalize_json(this_df, all_list_cols)
     else:
-        logger.info("No more list cols! All done")
+        logger.info("No more list cols! All done\n")
     return this_df
 
 
