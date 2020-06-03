@@ -72,6 +72,12 @@ def explode_list_cols_and_normalize_json(dframe, list_cols):
 def check_list_cols_in_df(dframe, cols_to_exclude=None):
     """
     helper function for commercetool data normalization
+    :param dframe: dataframe for which we need to check whether there are any list cols. If so we return a tuple: (True, list_cols)
+    :param cols_to_exclude: since this function is used to determine which cols to explode (only columns that contain lists must be "exploded"),
+            we included this parameter to be able to exclude some cols from being exploded. Reason: to limit the nr of rows that need to be processes
+            Ex. we might need to initially explode the column "lineItems" but within it there is a column "variant" which we don't want to explode.
+            If we set cols_to_exclude=["variant"], then this attribute will not be exploded.
+    :return: a tuple: (True, list_cols) or: (False, [])
     """
     cols_to_exclude_from_explode = cols_to_exclude if cols_to_exclude is not None else []
     all_dtypes = (dframe.applymap(type) == list).all()
@@ -85,12 +91,13 @@ def check_list_cols_in_df(dframe, cols_to_exclude=None):
 
 def process_response_from_commercetools(resp_dict, columns=None, cols_to_exclude=None):
     """
-    if columns is empty all elements from the response are processed
-    if not only relevant columns will get normalized
+    if columns=None (default), then all elements from the response dict are processed
+    if columns=['col1', 'col2'], then only columns col1 and col2 will get normalized
+    Also, we can provide a list of columns to exclude from normalization, which will be passed to check_list_cols_in_df()
     :param resp_dict: reponse from API
     :param columns: list of columns to process - default None to process ALL columns without excluding anything
     :param cols_to_exclude: list of columns to exclude from normalization
-    (normalization means: exploding lists and normalizing dictionaries)
+            (normalization means: exploding lists and normalizing dictionaries)
     :return: normalized df based on response dictionary
     """
     cols = columns if columns is not None else []
