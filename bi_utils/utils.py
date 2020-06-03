@@ -9,7 +9,6 @@ import logging
 import sys
 import os
 import pyexasol
-import requests
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 import json
@@ -326,33 +325,15 @@ def check_for_key(x, key_name='id'):
         return x.get(key_name, "empty")
     else:
         return None
-        
-        
-def get_ct_token(CT_CLIENT_ID, CT_CLIENT_PWD):
-    """
-    simple http request to get bearer token from commercetools 
-    :param CT_CLIENT_ID: commercetool client id
-    :param CT_CLIENT_PWD: commercetool client password
-    :return headers for http request to commercetools
-    """
-    data = {
-        'grant_type': 'client_credentials'
-           }
-
-    response = requests.post('https://auth.europe-west1.gcp.commercetools.com/oauth/token', data=data, auth=(CT_CLIENT_ID, CT_CLIENT_PWD))
-    headers = { 'Authorization': 'Bearer ' + str(response.json()['access_token']),}
-    
-    return headers
 
 
-def print_merge_query(pk_columns,exasol_schema, exasol_table, temp_schema=None, temp_tbl=None,
-                      exa_user='DWHEXA_USER', exa_pwd='DWHEXA_PASSWORD', exa_dsn='DWHEXA_HOST', env_file=".env"):
+def print_merge_query(pk_columns, exasol_schema, exasol_table, temp_schema=None, temp_tbl=None):
     """Usage example:
     print_merge_query(pk_columns="VISIT_DATE, RETURNING_CUSTOMER, DEVICE_TYPE, \
                         CHANNEL_LVL_1, CHANNEL_LVL_2, COST_CATEGORY, COSTCENTER_NAME, ACCOUNT_NAME, CREDITOR, SITE_DOMAIN",
                         exasol_schema="BUSINESS_VAULT", exasol_table="ATTRIBUTED_MARKETING_COSTS_VISITS")
     """
-    dotenv_path = join(dirname(""), '.env')
+    dotenv_path = join(dirname(""), '.env')  # requires parameters DWHEXA_USER, DWHEXA_PASSWORD, DWHEXA_HOST in .env file
     load_dotenv(dotenv_path)
     connection = return_exa_conn(exa_user='DWHEXA_USER', exa_pwd='DWHEXA_PASSWORD', exa_dsn='DWHEXA_HOST')
     tmp_table = exasol_table if temp_tbl is None else temp_tbl
@@ -383,194 +364,3 @@ def print_merge_query(pk_columns,exasol_schema, exasol_table, temp_schema=None, 
 
     merge_query += ''');'''
     print(merge_query.format(schema=exasol_schema, tbl=exasol_table, schema_tmp=tmp_schema, tbl_tmp=tmp_table))
-
-
-def explode_list_cols_and_normalize_json(dframe, list_cols):
-    """
-    helper function for commercetool data normalization
-    """
-    logger = set_logging()
-    shape_before_exploding = dframe.shape
-    # explode all lists so that we get nice dict
-    for col in dframe.columns:
-        try:
-            if col in list_cols:
-                logger.info(f"Exploding {col}")
-                dframe = dframe.explode(col).reset_index(drop=True)
-                # json_normalize all those columns and concat them back to the original df
-                temp_df = dframe[dframe[col].notnull()]
-                if not temp_df.empty:
-                    temp_df = pd.json_normalize(temp_df[col]).add_prefix(f"{col}__")
-                    dframe = pd.concat([dframe, temp_df], axis=1, ignore_index=False)
-        except Exception as exc:
-            logger.info(f"Error: {exc}")
-    shape_after_exploding = dframe.shape
-    logger.info(f"Shape before: {shape_before_exploding}, "
-          f"Shape after: {shape_after_exploding}")
-    return dframe
-
-
-def check_list_cols_in_df(dframe):
-    """
-    helper function for commercetool data normalization
-    """
-    logger = set_logging()
-    all_dtypes = (dframe.applymap(type) == list).all()
-    list_cols = all_dtypes.index[all_dtypes].tolist()
-    if len(list_cols) > 0:
-        return True, list_cols
-    else:
-        return False, list_cols
-
-
-def process_response_from_commercetools(resp_dict, columns=[]):
-    """
-    if columns is empty all elements from the response are processed
-    if not only relevant columns will get normalized
-    :param resp_dict: reponse from API
-    :param columns: list of columns to process 
-    :return: normalized df
-    """
-    logger = set_logging()
-    
-    if len(columns) > 0: # in case only certain columns should be normalized /considered
-        df = pd.json_normalize(resp_dict)
-        this_df = pd.DataFrame(df[columns])
-    else:
-        this_df = pd.json_normalize(resp_dict)
-
-    while check_list_cols_in_df(this_df)[0]:  # while True
-        all_list_cols = check_list_cols_in_df(this_df)[1]
-        this_df = explode_list_cols_and_normalize_json(this_df, all_list_cols)
-    else:
-        logger.info("No more list cols! All done")
-    return this_df
-
-
-def basic_ct_pagination(CT_CLIENT_ID, CT_CLIENT_PWD, ENDPOINT, columns=[]):
-    """
-    simple batch pagnination for each endpoint with the option to define whether only certain
-    columns should be normalized
-    :param CT_CLIENT_ID: CLIENT ID from commercetool for auth
-    :param CT_CLIENT_PWD: CLIENT PWD from commercetool for auth
-    :param ENDPOINT: e.g. products, categories, ...
-    :param columns: default all - otherwise needs specification
-    :return: df
-    """
-    logger = set_logging()
-    ''' first making initial API request and then pagination '''
-    headers = get_ct_token(CT_CLIENT_ID, CT_CLIENT_PWD)
-
-    x = 0
-    logger.info('Current offset: %s', x)
-    df = pd.DataFrame()
-
-    initial_request = requests.get('https://api.europe-west1.gcp.commercetools.com/flaconi-dev/' + ENDPOINT + '?limit=500', 
-                                    headers=headers)
-    
-    df = process_response_from_commercetools(initial_request.json()['results'], columns)
-
-    while True:
-        
-        x +=  initial_request.json()['count'] + initial_request.json()['offset'] 
-        logger.info('New offset: : %s', x)
-
-        response = requests.get('https://api.europe-west1.gcp.commercetools.com/flaconi-dev/' + ENDPOINT + '?limit=500&offset=' + str(x), 
-                                headers=headers)
-        
-        if response.json()['offset'] < initial_request.json()['total']:
-            tmp = process_response_from_commercetools(response.json()['results'], columns)
-            df = pd.concat([tmp, df]) # combine df's
-        else:
-            break
-
-    return df
-
-
-def ct_pagination_by_sort_key(CT_CLIENT_ID, CT_CLIENT_PWD, ENDPOINT, SORT_KEY, columns=[]):
-    """
-    simple batch pagnination for each endpoint with the option to define whether only certain
-    columns should be normalized - and results are sorted (recommended way)
-    :param CT_CLIENT_ID: CLIENT ID from commercetool for auth
-    :param CT_CLIENT_PWD: CLIENT PWD from commercetool for auth
-    :param ENDPOINT: e.g. products, categories, ...
-    :param SORT_KEY: column to sort by
-    :param columns: default all - otherwise needs specification
-    :return: df
-    """
-    logger = set_logging()
-
-    ''' first making initial API request and then pagination '''
-    headers = get_ct_token(CT_CLIENT_ID, CT_CLIENT_PWD)
-
-    initial_request = requests.get('https://api.europe-west1.gcp.commercetools.com/flaconi-dev/' + ENDPOINT + '?limit=500&withTotal=false&sort=' + SORT_KEY + '+asc', 
-                                    headers=headers)
-    
-    df = process_response_from_commercetools(initial_request.json()['results'], columns)
-
-    last_sort_value = initial_request.json()['results'][-1][SORT_KEY]
-
-    logger.info("First sort value: " + last_sort_value)
-
-    while True:
-
-        response = requests.get('https://api.europe-west1.gcp.commercetools.com/flaconi-dev/' + 
-                                ENDPOINT + '?limit=500&withTotal=false&sort=' + SORT_KEY + '+asc&where=' + SORT_KEY + '%3E"' + last_sort_value + '"', headers=headers)
-
-        
-        if len(response.json()['results']) > 0:
-            last_sort_value = response.json()['results'][-1][SORT_KEY]
-            logger.info("Current sort value: " + last_sort_value)
-            tmp = process_response_from_commercetools(response.json()['results'], columns)
-            df = pd.concat([tmp, df], copy = False) # combine df's
-            del tmp
-            del response
-        else:
-            break
-
-    return df
-
-
-
-def ct_pagination_current_products_by_sort_key(CT_CLIENT_ID, CT_CLIENT_PWD, ENDPOINT, SORT_KEY, columns=[]):
-    """
-    simple batch pagnination for product-projections (to just get the current and not staged data)
-    columns should be normalized - and results are sorted (recommended way)
-    :param CT_CLIENT_ID: CLIENT ID from commercetool for auth
-    :param CT_CLIENT_PWD: CLIENT PWD from commercetool for auth
-    :param ENDPOINT: e.g. products, categories, ...
-    :param SORT_KEY: column to sort by
-    :param columns: default all - otherwise needs specification
-    :return: df
-    """
-    logger = set_logging()
-
-    ''' first making initial API request and then pagination '''
-    headers = get_ct_token(CT_CLIENT_ID, CT_CLIENT_PWD)
-
-    initial_request = requests.get('https://api.europe-west1.gcp.commercetools.com/flaconi-dev/' + ENDPOINT + '?limit=500&staged=false&withTotal=false&sort=' + SORT_KEY + '+asc', 
-                                    headers=headers)
-    
-    df = process_response_from_commercetools(initial_request.json()['results'], columns)
-
-    last_sort_value = initial_request.json()['results'][-1][SORT_KEY]
-
-    logger.info("First sort value: " + last_sort_value)
-
-    while True:
-
-        response = requests.get('https://api.europe-west1.gcp.commercetools.com/flaconi-dev/' + 
-                                ENDPOINT + '?limit=500&staged=false&withTotal=false&sort=' + SORT_KEY + '+asc&where=' + SORT_KEY + '%3E"' + last_sort_value + '"', headers=headers)
-
-        
-        if len(response.json()['results']) > 0:
-            last_sort_value = response.json()['results'][-1][SORT_KEY]
-            logger.info("Current sort value: " + last_sort_value)
-            tmp = process_response_from_commercetools(response.json()['results'], columns)
-            df = pd.concat([tmp, df], copy = False) # combine df's
-            del tmp
-            del response
-        else:
-            break
-
-    return df
