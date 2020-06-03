@@ -9,7 +9,7 @@ setup(
     author_email='anna.anisienia@flaconi.de',
     license='Flaconi',
     packages=['bi_utils'],
-    install_requires=["python-dotenv>=0.12.0", "pandas>=1.0.2"],
+    install_requires=["python-dotenv>=0.12.0"],
     zip_safe=False
 )
 
