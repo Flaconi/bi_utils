@@ -4,7 +4,7 @@ Created by anna.anisienia on 26/05/2020
 import pandas as pd
 from datetime import datetime
 import requests
-from bi_utils.utils import set_logging
+from bi_utils.utils import set_logging, return_exa_conn
 
 logger = set_logging()
 
@@ -17,6 +17,25 @@ def parse_exa_to_ct_timestamp(exa_time):
     """
     timestamp = datetime.strftime(pd.to_datetime(exa_time), "%Y-%m-%dT%H:%M:%S%Z")
     return timestamp
+
+
+def get_max_modified_date_from_dwh(tbl_name='ORDERS', timestamp_colname='LAST_MODIFIED_AT'):
+    """
+    Get the latest timestamp from CT table - used for Delta Load
+    :param tbl_name: CT table
+    :param timestamp_colname: timestamp column that we want to use for Delta Load
+    :return: the latest timestamp
+    """
+    conn = return_exa_conn()
+    q = f"""SELECT MAX({timestamp_colname}) FROM STAGE_COMMERCETOOL.{tbl_name};"""
+    t = conn.export_to_list(q)
+    conn.close()
+    if len(t[0]) > 0:  # i.e. if the DWH table is not empty
+        max_last_modified_at = parse_exa_to_ct_timestamp(t[0][0])
+        logger.info(f"MAX TIMESTAMP from Exasol: {max_last_modified_at}")
+    else:
+        max_last_modified_at = None
+    return max_last_modified_at
 
 
 def get_ct_token(ct_client_id, clt_client_pwd):
@@ -105,7 +124,8 @@ def process_response_from_commercetools(resp_dict, columns=None, cols_to_exclude
 
     if len(cols) > 0:  # in case only certain columns should be normalized /considered
         df = pd.json_normalize(resp_dict)
-        this_df = df[cols]
+        this_df = df.loc[:, df.columns.isin(cols)]  # only filter out cols if they actually exist in the API response
+        # this_df = df[cols]  # this would work if we would get all columns that we need from the API - this is not always the case
     else:
         # initial json_normalize() results in many other list and dict column, which we then process in the while loop
         # until all relevant attributes are in form suitable for DWH i.e. strings/numeric columns (no longer lists and dicts)

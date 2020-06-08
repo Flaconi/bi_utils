@@ -15,6 +15,7 @@ import json
 from functools import reduce
 from os.path import join, dirname
 from dotenv import load_dotenv
+import hashlib
 
 loggers = {}
 
@@ -38,6 +39,18 @@ def set_logging(name="logger"):
         logger.addHandler(ch)
         loggers[name] = logger
         return logger
+
+
+def hash_id(id_column):
+    """
+    Usage via apply: df.HASHED_ID = df.id.apply(hash_id)
+    :param id_column: ex Order ID or Customer ID
+    :return: hashed ID
+    """
+    if id_column not in [None, '']:
+        return hashlib.sha1(str.encode(id_column)).hexdigest()
+    else:
+        return None
 
 
 def deployment(env=None, prod=True, dev=True):
