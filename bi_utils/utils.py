@@ -60,7 +60,10 @@ def hash_id(id_column):
     :param id_column: ex Order ID or Customer ID
     :return: hashed ID
     """
-    return hashlib.sha1(str.encode(id_column)).hexdigest()
+    if id_column not in [None, '']:
+        return hashlib.sha1(str.encode(id_column)).hexdigest()
+    else:
+        return None
 
 
 def deployment(env=None, prod=True, dev=True):
