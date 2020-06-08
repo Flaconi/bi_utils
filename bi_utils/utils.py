@@ -15,7 +15,6 @@ import json
 from functools import reduce
 from os.path import join, dirname
 from dotenv import load_dotenv
-import yaml
 import hashlib
 
 loggers = {}
@@ -40,18 +39,6 @@ def set_logging(name="logger"):
         logger.addHandler(ch)
         loggers[name] = logger
         return logger
-
-
-def read_yaml_configuration_file(config_path):
-    # Read CONFIG YAML file and do initial set-up
-    config = None
-    with open(config_path, "r") as stream:
-        try:
-            config = yaml.load(stream, Loader=yaml.SafeLoader)
-        except Exception as e:
-            print(e)
-
-    return config
 
 
 def hash_id(id_column):
