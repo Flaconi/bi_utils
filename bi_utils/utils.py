@@ -54,8 +54,13 @@ def read_yaml_configuration_file(config_path):
     return config
 
 
-def hash_order_id(order_id):
-    return hashlib.sha1(str.encode(order_id)).hexdigest()
+def hash_id(id_column):
+    """
+    Usage via apply: df.HASHED_ID = df.id.apply(hash_id)
+    :param id_column: ex Order ID or Customer ID
+    :return: hashed ID
+    """
+    return hashlib.sha1(str.encode(id_column)).hexdigest()
 
 
 def deployment(env=None, prod=True, dev=True):
