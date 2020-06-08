@@ -15,6 +15,8 @@ import json
 from functools import reduce
 from os.path import join, dirname
 from dotenv import load_dotenv
+import yaml
+import hashlib
 
 loggers = {}
 
@@ -38,6 +40,22 @@ def set_logging(name="logger"):
         logger.addHandler(ch)
         loggers[name] = logger
         return logger
+
+
+def read_yaml_configuration_file(config_path):
+    # Read CONFIG YAML file and do initial set-up
+    config = None
+    with open(config_path, "r") as stream:
+        try:
+            config = yaml.load(stream, Loader=yaml.SafeLoader)
+        except Exception as e:
+            print(e)
+
+    return config
+
+
+def hash_order_id(order_id):
+    return hashlib.sha1(str.encode(order_id)).hexdigest()
 
 
 def deployment(env=None, prod=True, dev=True):
