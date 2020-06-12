@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='bi_utils',
-    version='0.0.3',
+    version='0.0.4',
     description='common utility library shared between DE and DS teams to avoid duplication and maintenance efforts',
     url='http://github.com/Flaconi/bi_utils.git', 
     author='Anna Anisienia',
