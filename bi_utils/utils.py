@@ -1,6 +1,8 @@
 """
 Created on 8/11/2019
 """
+import warnings
+
 import boto3
 from botocore.exceptions import ClientError
 from botocore.exceptions import NoCredentialsError
@@ -112,6 +114,15 @@ def deployment(env=None, prod=True, dev=True):
         logger.info('Wrong input to the deployment function. Not running in any env. \nError message: {}'.format(exc))
 
 
+def deprecation(message):
+    """
+    Issue a deprecation warning as described in https://docs.python.org/3/library/warnings.html#warnings.warn
+    :param message: deprecation message
+    :return: nothing
+    """
+    warnings.warn(message, DeprecationWarning, stacklevel=2)
+
+
 def send_slack_alert(hook_url, slack_channel, slack_msg_text):
     """
     Send slack message by using Incoming Webhook.
@@ -120,14 +131,25 @@ def send_slack_alert(hook_url, slack_channel, slack_msg_text):
     :param slack_msg_text: string of message
     :return: nothing, just post HTTP request to slack
     """
+    deprecation("Slack_channel parameter is ignored. This function will be removed soon.")
+    send_slack_alert(hook_url, slack_msg_text)
+
+
+def send_slack_alert(hook_url, slack_msg_text):
+    """
+        Send slack message by using Incoming Webhook.
+        :param hook_url: to generate Hook URL, follow the instructions from https://api.slack.com/messaging/webhooks
+        :param slack_msg_text: string of message
+        :return: nothing, just post HTTP request to slack
+        """
     logger = set_logging()
-    slack_message = {'channel': slack_channel, 'text': slack_msg_text}
+    slack_message = {'text': slack_msg_text}
 
     req = Request(hook_url, json.dumps(slack_message).encode('utf-8'))
     try:
         response = urlopen(req)
         response.read()
-        logger.info("Message posted to %s", slack_message['channel'])
+        logger.info("Message posted to %s", hook_url)
     except HTTPError as e:
         logger.error("Request failed: %d %s", e.code, e.reason)
     except URLError as e:
