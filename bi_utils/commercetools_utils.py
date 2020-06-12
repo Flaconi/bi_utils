@@ -19,15 +19,16 @@ def parse_exa_to_ct_timestamp(exa_time):
     return timestamp
 
 
-def get_max_modified_date_from_dwh(tbl_name='ORDERS', timestamp_colname='LAST_MODIFIED_AT'):
+def get_max_modified_date_from_dwh(tbl_name='ORDERS', timestamp_colname='LAST_MODIFIED_AT', diff_in_min=60):
     """
     Get the latest timestamp from CT table - used for Delta Load
     :param tbl_name: CT table
     :param timestamp_colname: timestamp column that we want to use for Delta Load
+    :param diff_in_min: go back X number of minutes from the last timestamp
     :return: the latest timestamp
     """
     conn = return_exa_conn()
-    q = f"""SELECT MAX({timestamp_colname}) FROM STAGE_COMMERCETOOL.{tbl_name};"""
+    q = f"""SELECT MAX({timestamp_colname}) - INTERVAL '{diff_in_min}' MINUTE FROM STAGE_COMMERCETOOL.{tbl_name};"""
     t = conn.export_to_list(q)
     conn.close()
     if len(t[0]) > 0:  # i.e. if the DWH table is not empty
