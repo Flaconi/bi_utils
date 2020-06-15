@@ -158,7 +158,14 @@ def send_slack_alert_to_webhook(hook_url, slack_msg_text):
 
 def update_slack_alert_history(exa_connection, alert_identifier, alert_deduplication_key, alert_deduplication_value, message):
     """
-    Add an entry to the controlling table
+    Add an entry to the controlling table. This will add a new entry to the controlling table every time the function is called.
+    Intention:
+        This function should only be called when a slack alert was sent. It should be used together with the
+        check_alert_history_if_should_send function as described in usage.
+    Usage:
+        1. Use check_alert_history_if_should_send to check the controlling table if an alert should be sent.
+        2. Send a slack alert
+        3. Use update_slack_alert_history to add an entry to the controlling table for future checks
     :param exa_connection: connection object to Exasol
     :param alert_identifier: a unique identifier for the alert logic. e.g. send_alerts_voucher_margin
     :param alert_deduplication_key: the key that should be used for deduplication of alerts. e.g. voucher_code
@@ -177,7 +184,14 @@ def update_slack_alert_history(exa_connection, alert_identifier, alert_deduplica
 
 def check_alert_history_if_should_send(exa_connection, alert_identifier, alert_deduplication_key, current_alert_deduplication_value, resend_threshold=0):
     """
-    Check whether an alert should be sent by comparing the current deduplication value with with previous alerts respecting the resend threshold
+    Check whether an alert should be sent by comparing the current deduplication value with with previous alerts respecting the resend threshold.
+    Intention:
+        This function should be called before a slack alert is sent. To check whether it should be sent. It should be used together with the
+        update_slack_alert_history function as described in usage.
+    Usage:
+        1. Use check_alert_history_if_should_send to check the controlling table if an alert should be sent.
+        2. Send a slack alert
+        3. Use update_slack_alert_history to add an entry to the controlling table for future checks
     :param exa_connection: connection object to Exasol
     :param alert_identifier: a unique identifier for the alert logic. e.g. send_alerts_voucher_margin
     :param alert_deduplication_key: the key that should be used for deduplication of alerts. e.g. voucher_code
