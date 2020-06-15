@@ -1,6 +1,8 @@
 """
 Created on 8/11/2019
 """
+import warnings
+
 import boto3
 from botocore.exceptions import ClientError
 from botocore.exceptions import NoCredentialsError
@@ -112,26 +114,114 @@ def deployment(env=None, prod=True, dev=True):
         logger.info('Wrong input to the deployment function. Not running in any env. \nError message: {}'.format(exc))
 
 
+def deprecation(message):
+    """
+    Issue a deprecation warning as described in https://docs.python.org/3/library/warnings.html#warnings.warn
+    :param message: deprecation message
+    :return: nothing
+    """
+    warnings.warn(message, DeprecationWarning, stacklevel=2)
+
+
 def send_slack_alert(hook_url, slack_channel, slack_msg_text):
     """
     Send slack message by using Incoming Webhook.
     :param hook_url: to generate Hook URL, follow the instructions from https://api.slack.com/messaging/webhooks
-    :param slack_channel: ex. #general
+    :param slack_channel: WARNING: This parameter is ignored, the target channel is defined as part of the webhook
     :param slack_msg_text: string of message
     :return: nothing, just post HTTP request to slack
     """
+    deprecation("Slack_channel parameter is ignored. This function will be removed soon.")
+    send_slack_alert_to_webhook(hook_url, slack_msg_text)
+
+
+def send_slack_alert_to_webhook(hook_url, slack_msg_text):
+    """
+        Send slack message to a webhook. https://api.slack.com/messaging/webhooks
+        :param hook_url: to generate Hook URL, follow the instructions from https://api.slack.com/messaging/webhooks
+        :param slack_msg_text: string of message
+        :return: nothing, just post HTTP request to slack
+        """
     logger = set_logging()
-    slack_message = {'channel': slack_channel, 'text': slack_msg_text}
+    slack_message = {'text': slack_msg_text}
 
     req = Request(hook_url, json.dumps(slack_message).encode('utf-8'))
     try:
         response = urlopen(req)
         response.read()
-        logger.info("Message posted to %s", slack_message['channel'])
+        logger.info("Message posted to %s", hook_url)
     except HTTPError as e:
         logger.error("Request failed: %d %s", e.code, e.reason)
     except URLError as e:
         logger.error("Server connection failed: %s", e.reason)
+
+
+def update_slack_alert_history(exa_connection, alert_identifier, alert_deduplication_key, alert_deduplication_value, message):
+    """
+    Add an entry to the controlling table. This will add a new entry to the controlling table every time the function is called.
+    Intention:
+        This function should only be called when a slack alert was sent. It should be used together with the
+        check_alert_history_if_should_send function as described in usage.
+    Usage:
+        1. Use check_alert_history_if_should_send to check the controlling table if an alert should be sent.
+        2. Send a slack alert
+        3. Use update_slack_alert_history to add an entry to the controlling table for future checks
+    :param exa_connection: connection object to Exasol
+    :param alert_identifier: a unique identifier for the alert logic. e.g. send_alerts_voucher_margin
+    :param alert_deduplication_key: the key that should be used for deduplication of alerts. e.g. voucher_code
+    :param alert_deduplication_value: the integer value that should be used for deduplication of alerts. e.g. 7
+    :param message: message of the sent alert.
+    :return: nothing
+    """
+    logger = set_logging()
+    update_history_table_query = f"""
+    INSERT INTO DATA_SERVICES.SLACK_ALERT_HISTORY 
+    VALUES ('{alert_identifier}', CURRENT_TIMESTAMP, '{alert_deduplication_key}', {alert_deduplication_value}, '{message}')
+    """.format(alert_identifier=alert_identifier, alert_deduplication_key=alert_deduplication_key, alert_deduplication_value=alert_deduplication_value,message=message)
+    logger.debug(f"Adding {alert_deduplication_key} with {alert_deduplication_value} for {alert_identifier} to history table.")
+    exa_connection.execute(update_history_table_query)
+
+
+def check_alert_history_if_should_send(exa_connection, alert_identifier, alert_deduplication_key, current_alert_deduplication_value, resend_threshold=0):
+    """
+    Check whether an alert should be sent by comparing the current deduplication value with with previous alerts respecting the resend threshold.
+    Intention:
+        This function should be called before a slack alert is sent. To check whether it should be sent. It should be used together with the
+        update_slack_alert_history function as described in usage.
+    Usage:
+        1. Use check_alert_history_if_should_send to check the controlling table if an alert should be sent.
+        2. Send a slack alert
+        3. Use update_slack_alert_history to add an entry to the controlling table for future checks
+    :param exa_connection: connection object to Exasol
+    :param alert_identifier: a unique identifier for the alert logic. e.g. send_alerts_voucher_margin
+    :param alert_deduplication_key: the key that should be used for deduplication of alerts. e.g. voucher_code
+    :param current_alert_deduplication_value: the current integer value that should be checked against the history for deduplication of alerts. e.g. 7
+    :param resend_threshold: integer value of alerts that should be skipped before resending an alert. 0 means even the same alert will be sent again. e.g. 8
+    :return: True if an alert should be sent
+    """
+    logger = set_logging()
+    should_send_alert = False
+    threshold_check_query = """
+    SELECT 
+        ALERT_DEDUPLICATION_VALUE
+    FROM DATA_SERVICES.SLACK_ALERT_HISTORY
+    WHERE LAST_ALERT > CURRENT_DATE
+    AND ALERT_IDENTIFIER = '{alert_identifier}'
+    AND ALERT_DEDUPLICATION_KEY = '{alert_deduplication_key}'
+    ORDER BY ALERT_DEDUPLICATION_VALUE DESC; 
+    """.format(alert_identifier=alert_identifier, alert_deduplication_key=alert_deduplication_key)
+    threshold_check_result = exa_connection.execute(threshold_check_query).fetchall()
+    if len(threshold_check_result) == 0:
+        logger.info(f"No alert for {alert_deduplication_key} in {alert_identifier} sent so far. Should send one now.")
+        should_send_alert = True
+    else:
+        last_alert_nr = threshold_check_result[0][0]
+        logger.info(
+            f"Last alert for {alert_deduplication_key} in {alert_identifier} sent at {last_alert_nr}. Currently at {current_alert_deduplication_value} with resend threshold: {resend_threshold}")
+        if last_alert_nr <= (current_alert_deduplication_value - resend_threshold):
+            should_send_alert = True
+    logger.debug(f"Should send alarm now: {should_send_alert}")
+    return should_send_alert
 
 
 def merge_tmp_into_target_tbl(exa_connection, dataframe, pk_columns,
