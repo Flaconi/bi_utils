@@ -127,17 +127,17 @@ def send_slack_alert(hook_url, slack_channel, slack_msg_text):
     """
     Send slack message by using Incoming Webhook.
     :param hook_url: to generate Hook URL, follow the instructions from https://api.slack.com/messaging/webhooks
-    :param slack_channel: ex. #general
+    :param slack_channel: WARNING: This parameter is ignored, the target channel is defined as part of the webhook
     :param slack_msg_text: string of message
     :return: nothing, just post HTTP request to slack
     """
     deprecation("Slack_channel parameter is ignored. This function will be removed soon.")
-    send_slack_alert(hook_url, slack_msg_text)
+    send_slack_alert_to_webhook(hook_url, slack_msg_text)
 
 
-def send_slack_alert(hook_url, slack_msg_text):
+def send_slack_alert_to_webhook(hook_url, slack_msg_text):
     """
-        Send slack message by using Incoming Webhook.
+        Send slack message to a webhook. https://api.slack.com/messaging/webhooks
         :param hook_url: to generate Hook URL, follow the instructions from https://api.slack.com/messaging/webhooks
         :param slack_msg_text: string of message
         :return: nothing, just post HTTP request to slack
