@@ -156,6 +156,60 @@ def send_slack_alert(hook_url, slack_msg_text):
         logger.error("Server connection failed: %s", e.reason)
 
 
+def update_slack_alert_history(exa_connection, alert_identifier, alert_deduplication_key, alert_deduplication_value, message):
+    """
+    Add an entry to the controlling table
+    :param exa_connection: connection object to Exasol
+    :param alert_identifier: a unique identifier for the alert logic. e.g. send_alerts_voucher_margin
+    :param alert_deduplication_key: the key that should be used for deduplication of alerts. e.g. voucher_code
+    :param alert_deduplication_value: the integer value that should be used for deduplication of alerts. e.g. 7
+    :param message: message of the sent alert.
+    :return: nothing
+    """
+    logger = set_logging()
+    update_history_table_query = f"""
+    INSERT INTO DATA_SERVICES.SLACK_ALERT_HISTORY 
+    VALUES ('{alert_identifier}', CURRENT_TIMESTAMP, '{alert_deduplication_key}', {alert_deduplication_value}, '{message}')
+    """.format(alert_identifier=alert_identifier, alert_deduplication_key=alert_deduplication_key, alert_deduplication_value=alert_deduplication_value,message=message)
+    logger.debug(f"Adding {alert_deduplication_key} with {alert_deduplication_value} for {alert_identifier} to history table.")
+    exa_connection.execute(update_history_table_query)
+
+
+def check_alert_history_if_should_send(exa_connection, alert_identifier, alert_deduplication_key, current_alert_deduplication_value, resend_threshold=0):
+    """
+    Check whether an alert should be sent by comparing the current deduplication value with with previous alerts respecting the resend threshold
+    :param exa_connection: connection object to Exasol
+    :param alert_identifier: a unique identifier for the alert logic. e.g. send_alerts_voucher_margin
+    :param alert_deduplication_key: the key that should be used for deduplication of alerts. e.g. voucher_code
+    :param current_alert_deduplication_value: the current integer value that should be checked against the history for deduplication of alerts. e.g. 7
+    :param resend_threshold: integer value of alerts that should be skipped before resending an alert. 0 means even the same alert will be sent again. e.g. 8
+    :return: True if an alert should be sent
+    """
+    logger = set_logging()
+    should_send_alert = False
+    threshold_check_query = """
+    SELECT 
+        ALERT_DEDUPLICATION_VALUE
+    FROM DATA_SERVICES.SLACK_ALERT_HISTORY
+    WHERE LAST_ALERT > CURRENT_DATE
+    AND ALERT_IDENTIFIER = '{alert_identifier}'
+    AND ALERT_DEDUPLICATION_KEY = '{alert_deduplication_key}'
+    ORDER BY ALERT_DEDUPLICATION_VALUE DESC; 
+    """.format(alert_identifier=alert_identifier, alert_deduplication_key=alert_deduplication_key)
+    threshold_check_result = exa_connection.execute(threshold_check_query).fetchall()
+    if len(threshold_check_result) == 0:
+        logger.info(f"No alert for {alert_deduplication_key} in {alert_identifier} sent so far. Should send one now.")
+        should_send_alert = True
+    else:
+        last_alert_nr = threshold_check_result[0][0]
+        logger.info(
+            f"Last alert for {alert_deduplication_key} in {alert_identifier} sent at {last_alert_nr}. Currently at {current_alert_deduplication_value} with resend threshold: {resend_threshold}")
+        if last_alert_nr <= (current_alert_deduplication_value - resend_threshold):
+            should_send_alert = True
+    logger.debug(f"Should send alarm now: {should_send_alert}")
+    return should_send_alert
+
+
 def merge_tmp_into_target_tbl(exa_connection, dataframe, pk_columns,
                               exasol_schema, exasol_table, temp_schema=None, temp_tbl=None):
     """
