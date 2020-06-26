@@ -298,18 +298,31 @@ def return_exa_conn(exa_user='DWHEXA_USER', exa_pwd='DWHEXA_PASSWORD', exa_dsn='
     return conn
 
 
-def return_df_from_sql_script(filename, exa_conn):
+def return_df_from_sql_script(filename, exa_conn, **kwargs):
     """
+    Get data from Exasol based on a query with various parameters
+    Usage:
+        1. With parameters: df = return_df_from_sql_script('voucher_error_ratio.sql', conn,
+                                                            total_requests=100,
+                                                            error_percent=0.5)
+        2. Without parameters: df = return_df_from_sql_script('voucher_error_ratio.sql', conn)
+
+        Example of params in the query:
+        SELECT ... FROM ... GROUP BY ...  HAVING LOCAL.TOTAL_REQUESTS > {total_requests}
+                                             AND LOCAL.ERROR_PERCENT > {error_percent}
     :param filename: SQL script ex. "script.sql"
     :param exa_conn: name of the connection object
+    :param kwargs: optional parameters that can be passed to the query
     :return: pandas df
     """
     logger = set_logging()
-    sql_script = open(filename, 'r')  # Open and read the file as a single buffer
-    query = sql_script.read()
-    sql_script.close()
+    with open(filename, 'r') as sql_script:  # Open and read the file as a single buffer
+        query = sql_script.read()
+    if kwargs:  # if params to query provided, use them. Otherwise query=query
+        query = query.format(**kwargs)
     try:
         tbl_from_sql = exa_conn.export_to_pandas(query)
+        logger.info('Data successfully imported from Exasol')
         return tbl_from_sql
     except Exception as exc:
         logger.info(f"Couldn't read the query. Error msg: {exc}")
