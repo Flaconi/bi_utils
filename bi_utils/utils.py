@@ -200,7 +200,7 @@ def check_alert_history_if_should_send(exa_connection, alert_identifier, alert_d
     :return: True if an alert should be sent
     """
     logger = set_logging()
-    should_send_alert = False
+    should_send_alert = False  # default
     threshold_check_query = """
     SELECT 
         ALERT_DEDUPLICATION_VALUE
@@ -220,8 +220,6 @@ def check_alert_history_if_should_send(exa_connection, alert_identifier, alert_d
             f"Last alert for {alert_deduplication_key} in {alert_identifier} sent with value {last_alert_nr}. Current value: {current_alert_deduplication_value} with resend threshold: {resend_threshold}")
         if last_alert_nr <= (current_alert_deduplication_value - resend_threshold):
             should_send_alert = True
-        else:
-            should_send_alert = False   # to make it explicit
     logger.debug(f"Should send alarm now: {should_send_alert}")
     return should_send_alert
 
