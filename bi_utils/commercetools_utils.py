@@ -1,6 +1,3 @@
-"""
-Created by anna.anisienia on 26/05/2020
-"""
 import pandas as pd
 from datetime import datetime
 import requests
@@ -157,7 +154,7 @@ def basic_ct_pagination(ct_client_id, ct_client_pwd, endpoint, columns=None, col
     x = 0
     logger.info('Current offset: %s', x)
     initial_request = requests.get(
-        'https://api.europe-west1.gcp.commercetools.com/flaconi-dev/' + endpoint + '?limit=500',
+        'https://api.europe-west1.gcp.commercetools.com/flaconi-prod/' + endpoint + '?limit=500',
         headers=headers)
     df = process_response_from_commercetools(initial_request.json()['results'], columns, cols_to_exclude)
 
@@ -165,7 +162,7 @@ def basic_ct_pagination(ct_client_id, ct_client_pwd, endpoint, columns=None, col
         x += initial_request.json()['count'] + initial_request.json()['offset']
         logger.info('New offset: : %s', x)
         response = requests.get(
-            'https://api.europe-west1.gcp.commercetools.com/flaconi-dev/' + endpoint + '?limit=500&offset=' + str(x),
+            'https://api.europe-west1.gcp.commercetools.com/flaconi-prod/' + endpoint + '?limit=500&offset=' + str(x),
             headers=headers)
 
         if response.json()['offset'] < initial_request.json()['total']:
@@ -198,7 +195,7 @@ def ct_pagination_by_sort_key(ct_client_id, clt_client_pwd, endpoint, sort_key, 
     logger.info(f"MAX TIMESTAMP provided for the API request: {max_time}")
 
     headers = get_ct_token(ct_client_id, clt_client_pwd)
-    base_url = 'https://api.europe-west1.gcp.commercetools.com/flaconi-dev/'
+    base_url = 'https://api.europe-west1.gcp.commercetools.com/flaconi-prod/'
 
     # initial request's URL. Example: base_url + orders?where=lastModifiedAt%3E%3D%222020-05-29T18%3A05%3A40%22&limit=500&offset=0&sort=lastModifiedAt%20asc
     init_req_url = base_url + endpoint + '?where=' + sort_key + '%3E%3D%22' + max_time + '%22&limit=500&sort=' + sort_key + '%20asc' + '&withTotal=false'
