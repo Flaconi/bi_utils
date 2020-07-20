@@ -25,6 +25,7 @@ def get_max_modified_date_from_dwh(tbl_name='ORDERS', timestamp_colname='LAST_MO
     :return: the latest timestamp
     """
     conn = return_exa_conn()
+    # with INTERVAL MINUTE, HOUR and DAY Exasol only allows values below 100, so diff_in_min can be between 0 and 99
     q = f"""SELECT MAX({timestamp_colname}) - INTERVAL '{diff_in_min}' MINUTE FROM STAGE_COMMERCETOOL.{tbl_name};"""
     t = conn.export_to_list(q)
     conn.close()
@@ -207,28 +208,37 @@ def ct_pagination_by_sort_key(ct_client_id, clt_client_pwd, endpoint, sort_key, 
     # make the initial API request and then start pagination
     logger.info(f"INITIAL REQUEST URL: {full_url_init_req}")
     initial_request = requests.get(full_url_init_req, headers=headers)
-    df = process_response_from_commercetools(initial_request.json()['results'], columns, cols_to_exclude)
-    last_sort_value = initial_request.json()['results'][-1][sort_key]
-    logger.info("Current sort value: " + last_sort_value)
+    initial_request_json = initial_request.json()
+    status_code = initial_request_json.get('statusCode')
+    msg = initial_request_json.get('message')
+    res = initial_request_json.get('results')
+    if not res:  # i.e. res is either None or []
+        logger.info(f'Request failed. We got status code: {status_code}. Error message: {msg}. ' +
+                    f'Full response JSON: {initial_request_json}')
+    else:
+        df = process_response_from_commercetools(initial_request_json['results'], columns, cols_to_exclude)
+        last_sort_value = initial_request_json['results'][-1][sort_key]
+        logger.info("Current sort value: " + last_sort_value)
 
-    while True:
-        # make subsequent API requests
-        subs_req_url = base_url + endpoint + '?limit=500&withTotal=false&sort=' + sort_key + '+asc&where=' + sort_key + '%3E"' + last_sort_value + '"'
-        if staged:
-            full_subs_req_url = subs_req_url
-        else:
-            full_subs_req_url = subs_req_url + '&staged=false'
+        while True:
+            # make subsequent API requests
+            subs_req_url = base_url + endpoint + '?limit=500&withTotal=false&sort=' + sort_key + '+asc&where=' + sort_key + '%3E"' + last_sort_value + '"'
+            if staged:
+                full_subs_req_url = subs_req_url
+            else:
+                full_subs_req_url = subs_req_url + '&staged=false'
 
-        logger.info(f'Current URL: {full_subs_req_url}')
-        response = requests.get(full_subs_req_url, headers=headers)
-        if len(response.json()['results']) > 0:
-            last_sort_value = response.json()['results'][-1][sort_key]
-            logger.info("Next sort value: " + last_sort_value)
-            tmp = process_response_from_commercetools(response.json()['results'], columns, cols_to_exclude)
-            df = pd.concat([tmp, df], copy=False)  # combine df's
-            del tmp
-            del response
-        else:
-            break
-    logger.info(f"Shape of the final df after pagination: {df.shape}")
-    return df
+            logger.info(f'Current URL: {full_subs_req_url}')
+            response = requests.get(full_subs_req_url, headers=headers)
+            results = response.json().get('results')
+            if len(results) > 0:
+                last_sort_value = results[-1][sort_key]
+                logger.info("Next sort value: " + last_sort_value)
+                tmp = process_response_from_commercetools(results, columns, cols_to_exclude)
+                df = pd.concat([tmp, df], copy=False)  # combine df's
+                del tmp
+                del response
+            else:
+                break
+        logger.info(f"Shape of the final df after pagination: {df.shape}")
+        return df
