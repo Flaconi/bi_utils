@@ -184,7 +184,7 @@ def update_slack_alert_history(exa_connection, alert_identifier, alert_deduplica
 
 def check_alert_history_if_should_send(exa_connection, alert_identifier, alert_deduplication_key, current_alert_deduplication_value, resend_threshold=0):
     """
-    Check whether an alert should be sent by comparing the current deduplication value with with previous alerts respecting the resend threshold.
+    Check whether an alert should be sent by comparing the absolute difference between the current deduplication value and the previous alert respecting the resend threshold.
     Intention:
         This function should be called before a slack alert is sent. To check whether it should be sent. It should be used together with the
         update_slack_alert_history function as described in usage.
@@ -208,17 +208,17 @@ def check_alert_history_if_should_send(exa_connection, alert_identifier, alert_d
     WHERE LAST_ALERT > CURRENT_DATE
     AND ALERT_IDENTIFIER = '{alert_identifier}'
     AND ALERT_DEDUPLICATION_KEY = '{alert_deduplication_key}'
-    ORDER BY ALERT_DEDUPLICATION_VALUE DESC; 
+    ORDER BY LAST_ALERT DESC
+    LIMIT 1;
     """.format(alert_identifier=alert_identifier, alert_deduplication_key=alert_deduplication_key)
     threshold_check_result = exa_connection.execute(threshold_check_query).fetchall()
     if len(threshold_check_result) == 0:
         logger.info(f"No alert for {alert_deduplication_key} in {alert_identifier} sent so far. Should send one now.")
         should_send_alert = True
     else:
-        last_alert_nr = threshold_check_result[0][0]
-        logger.info(
-            f"Last alert for {alert_deduplication_key} in {alert_identifier} sent with value {last_alert_nr}. Current value: {current_alert_deduplication_value} with resend threshold: {resend_threshold}")
-        if last_alert_nr <= (current_alert_deduplication_value - resend_threshold):
+        last_alert_value = threshold_check_result[0][0]
+        logger.info(f"Last alert for {alert_deduplication_key} in {alert_identifier} sent with value {last_alert_value}. Current value: {current_alert_deduplication_value} with resend threshold: {resend_threshold}")
+        if abs(current_alert_deduplication_value - last_alert_value) >= resend_threshold:
             should_send_alert = True
     logger.debug(f"Should send alarm now: {should_send_alert}")
     return should_send_alert
