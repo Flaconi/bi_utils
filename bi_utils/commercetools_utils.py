@@ -51,42 +51,6 @@ def get_ct_token(ct_client_id, clt_client_pwd):
     return headers
 
 
-def explode_list_cols_and_normalize_json(dframe, list_cols):
-    """
-    Explode all list attributes to separate rows for the relevant attributes.
-    After all list columns have been exploded, we are left with many Dictionary values
-        - we want to normalize them to DFrame columns by using json_normalize()
-    Those normalized values may again have list columns with dictionaries nested inside them - therefore we use while loop
-    in process_response_from_commercetools that calls this function until everything is normalized
-    :param dframe: dataframe created from response Dict
-    :param list_cols: list of columns to process as a list - those should be columns that include lists and dictionaries
-    :return: transformed df where all attributed that contained lists
-    (ex. list of product prices per country for each product)
-    have been exploded to separate rows + all dictionaries have been normalized to DFrame columns
-    """
-    shape_before_exploding = dframe.shape
-    for col in dframe.columns:
-        try:
-            if col in list_cols:
-                logger.info(f"Exploding {col}")
-                dframe = dframe.explode(col).reset_index(drop=True)
-                logger.info(f"=========== SHAPE AFTER EXPLODING {col}: {dframe.shape} ===============")
-                # json_normalize all those columns and concat them back to the original df
-                temp_df = dframe[dframe[col].notnull()]  # if list was empty, we get NULLs
-                if not temp_df.empty:
-                    temp_df = pd.json_normalize(temp_df[col]).add_prefix(f"{col}__")
-                    dframe = pd.concat([dframe, temp_df], axis=1, ignore_index=False)
-                    del temp_df
-            else:
-                pass
-        except Exception as exc:
-            logger.info(f"Error: {exc}")
-    shape_after_exploding = dframe.shape
-    logger.info(f"Shape before: {shape_before_exploding}, "
-                f"Shape after: {shape_after_exploding}")
-    return dframe
-
-
 def check_list_cols_in_df(dframe, cols_to_exclude=None):
     """
     helper function for commercetool data normalization
@@ -101,10 +65,33 @@ def check_list_cols_in_df(dframe, cols_to_exclude=None):
     all_dtypes = (dframe.applymap(type) == list).all()
     cols_incl_lists = all_dtypes.index[all_dtypes].tolist()
     list_cols = [i for i in cols_incl_lists if i not in cols_to_exclude_from_explode]
-    if len(list_cols) > 0:
-        return True, list_cols
-    else:
-        return False, list_cols
+    return list_cols
+
+
+def explode_and_normalize(dframe, column='lineItems'):
+    """
+    Take the df from API response which has already been JSON normalized and normalize the list columns
+        - normalize here means: explode all list attributes to separate rows.
+        After all list columns have been exploded, we are left with many Dictionary values- we want to normalize them
+        to DFrame columns by using json_normalize()
+        - pd.json_normalize doesn't work if there are any NULL values - therefore, we normalize only NOT NULL rows
+         and merge them back to the original df based on original index
+    :param dframe: json normalized df
+    :param column: column that contains a list of values - we later use it while looping over all list columns
+    :return: exploded and normalized df acc. to the specified column
+    """
+    exploded_df = dframe.explode(column).reset_index(drop=True)
+    exploded_df[f'Index_After_Exploding_{column}'] = exploded_df.index  # create new index to later join normalized part
+    exploded_df_no_nulls = exploded_df.dropna(subset=[column])
+    json_normalized_part = pd.json_normalize(exploded_df_no_nulls[column]).add_prefix(f"{column}__")
+    exploded_df_no_nulls = exploded_df_no_nulls.reset_index(drop=True)
+    json_normalized_part = json_normalized_part.reset_index(drop=True)
+    # merge/join the exploded df with only original columns + json_normalized_part with the columns from normalization
+    merged = exploded_df_no_nulls.merge(json_normalized_part, right_index=True, left_index=True)
+    relev_cols = merged.columns.tolist()  # so that we ignore duplicated columns *_2 that exist in both dfs that we merge
+    # left join the original exploded df and the normalized part based on the original index
+    full = exploded_df.merge(merged, how='left', on=f'Index_After_Exploding_{column}', suffixes=(False, '_2'))[relev_cols]
+    return full
 
 
 def process_response_from_commercetools(resp_dict, columns=None, cols_to_exclude=None):
@@ -126,19 +113,13 @@ def process_response_from_commercetools(resp_dict, columns=None, cols_to_exclude
         this_df = df.loc[:, df.columns.isin(cols)]  # only filter out cols if they actually exist in the API response
         # this_df = df[cols]  # this would work if we would get all columns that we need from the API - this is not always the case
     else:
-        # initial json_normalize() results in many other list and dict column, which we then process in the while loop
-        # until all relevant attributes are in form suitable for DWH i.e. strings/numeric columns (no longer lists and dicts)
         this_df = pd.json_normalize(resp_dict)
 
-    while check_list_cols_in_df(this_df, cols_to_exclude_from_explode)[0]:  # while True
-        all_list_cols = check_list_cols_in_df(this_df, cols_to_exclude_from_explode)[1]
-        this_df = explode_list_cols_and_normalize_json(this_df, all_list_cols)
-    else:
-        logger.info("No more list cols! All done\n")
     return this_df
 
 
-def basic_ct_pagination(ct_client_id, ct_client_pwd, endpoint, columns=None, cols_to_exclude=None):
+def basic_ct_pagination(ct_client_id, ct_client_pwd, endpoint, columns=None, cols_to_exclude=None,
+                        base_url='https://api.europe-west1.gcp.commercetools.com/flaconi-prod/'):
     """
     simple batch pagnination for each endpoint with the option to define whether only certain
     columns should be normalized
@@ -147,6 +128,7 @@ def basic_ct_pagination(ct_client_id, ct_client_pwd, endpoint, columns=None, col
     :param endpoint: e.g. products, categories, orders, ...
     :param columns: default None, which means all columns - otherwise needs column specification
     :param cols_to_exclude: list of columns which we don't want to explode and normalize
+    :param base_url: bydefault points to flaconi-prod, but it could be flaconi-stage or -dev
     :return: df concatenated from all API requests + transformed
     """
     ''' first making initial API request and then pagination '''
@@ -154,17 +136,13 @@ def basic_ct_pagination(ct_client_id, ct_client_pwd, endpoint, columns=None, col
 
     x = 0
     logger.info('Current offset: %s', x)
-    initial_request = requests.get(
-        'https://api.europe-west1.gcp.commercetools.com/flaconi-prod/' + endpoint + '?limit=500',
-        headers=headers)
+    initial_request = requests.get(base_url + endpoint + '?limit=500', headers=headers)
     df = process_response_from_commercetools(initial_request.json()['results'], columns, cols_to_exclude)
 
     while True:
         x += initial_request.json()['count'] + initial_request.json()['offset']
         logger.info('New offset: : %s', x)
-        response = requests.get(
-            'https://api.europe-west1.gcp.commercetools.com/flaconi-prod/' + endpoint + '?limit=500&offset=' + str(x),
-            headers=headers)
+        response = requests.get(base_url + endpoint + '?limit=500&offset=' + str(x), headers=headers)
 
         if response.json()['offset'] < initial_request.json()['total']:
             tmp = process_response_from_commercetools(response.json()['results'], columns, cols_to_exclude)
@@ -175,8 +153,30 @@ def basic_ct_pagination(ct_client_id, ct_client_pwd, endpoint, columns=None, col
     return df
 
 
+def normalize_final_df(dframe, cols_to_exclude_from_explode):
+    """
+    The normalized values may again have list columns with dictionaries nested inside them - therefore we use while loop
+    that calls the function `explode_and_normalize` until everything is normalized i.e. until all relevant attributes
+    are in form suitable for DWH i.e. strings/numeric columns (no longer lists and dicts)
+    :param dframe: final df after all pagination is finished
+    :param cols_to_exclude_from_explode: list of columns which we don't want to explode and normalize
+    :return: final df after normalization
+    """
+    while check_list_cols_in_df(dframe, cols_to_exclude_from_explode):  # while True
+        all_list_cols = check_list_cols_in_df(dframe, cols_to_exclude_from_explode)
+        for col in all_list_cols:
+            logger.info(f'=== EXPLODING AND NORMALIZING COLUMN: {col}. Shape before: {dframe.shape} ===')
+            dframe = explode_and_normalize(dframe, column=col)
+            dframe = dframe.drop(columns=[col])  # drop after normalization
+            logger.info(f'=== Shape after: {dframe.shape} ===')
+    else:
+        logger.info("No more list cols! All done.")
+    return dframe
+
+
 def ct_pagination_by_sort_key(ct_client_id, clt_client_pwd, endpoint, sort_key, max_timestamp=None,
-                              columns=None, cols_to_exclude=None, staged=True):
+                              columns=None, cols_to_exclude=None, staged=True,
+                              base_url='https://api.europe-west1.gcp.commercetools.com/flaconi-prod/'):
     """
     simple batch pagnination for each endpoint with the option to define whether only certain
     columns should be normalized - and results are sorted (recommended way)
@@ -189,6 +189,7 @@ def ct_pagination_by_sort_key(ct_client_id, clt_client_pwd, endpoint, sort_key, 
     :param cols_to_exclude: list of columns which we don't want to explode and normalize
     :param staged: if staged is set to False, then &staged=false will be added to the request. It's used for product-projections
             (to just get the current and not staged data) - replaces ct_pagination_current_products_by_sort_key()
+    :param base_url: bydefault points to flaconi-prod, but it could be flaconi-stage or -dev
     :return: df concatenated from all API requests + transformed
     """
     # make full load from 2020-01-01 if provided max_timestamp is None
@@ -196,7 +197,6 @@ def ct_pagination_by_sort_key(ct_client_id, clt_client_pwd, endpoint, sort_key, 
     logger.info(f"MAX TIMESTAMP provided for the API request: {max_time}")
 
     headers = get_ct_token(ct_client_id, clt_client_pwd)
-    base_url = 'https://api.europe-west1.gcp.commercetools.com/flaconi-prod/'
 
     # initial request's URL. Example: base_url + orders?where=lastModifiedAt%3E%3D%222020-05-29T18%3A05%3A40%22&limit=500&offset=0&sort=lastModifiedAt%20asc
     init_req_url = base_url + endpoint + '?where=' + sort_key + '%3E%3D%22' + max_time + '%22&limit=500&sort=' + sort_key + '%20asc' + '&withTotal=false'
@@ -217,6 +217,7 @@ def ct_pagination_by_sort_key(ct_client_id, clt_client_pwd, endpoint, sort_key, 
                     f'Full response JSON: {initial_request_json}')
     else:
         df = process_response_from_commercetools(initial_request_json['results'], columns, cols_to_exclude)
+        all_dfs_from_ct = [df]
         last_sort_value = initial_request_json['results'][-1][sort_key]
         logger.info("Current sort value: " + last_sort_value)
 
@@ -235,10 +236,14 @@ def ct_pagination_by_sort_key(ct_client_id, clt_client_pwd, endpoint, sort_key, 
                 last_sort_value = results[-1][sort_key]
                 logger.info("Next sort value: " + last_sort_value)
                 tmp = process_response_from_commercetools(results, columns, cols_to_exclude)
-                df = pd.concat([tmp, df], copy=False)  # combine df's
+                all_dfs_from_ct.append(tmp)
                 del tmp
                 del response
             else:
                 break
-        logger.info(f"Shape of the final df after pagination: {df.shape}")
+        df = pd.concat(all_dfs_from_ct, ignore_index=True)  # combine df's
+        logger.info(f"Shape of the df after pagination: {df.shape}")
+
+        df = normalize_final_df(df, cols_to_exclude)
+        logger.info(f"Shape of the df after final normalization: {df.shape}")
         return df
