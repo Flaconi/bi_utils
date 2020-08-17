@@ -174,12 +174,18 @@ def update_slack_alert_history(exa_connection, alert_identifier, alert_deduplica
     :return: nothing
     """
     logger = set_logging()
-    update_history_table_query = f"""
+    update_history_table_query = """
     INSERT INTO DATA_SERVICES.SLACK_ALERT_HISTORY 
-    VALUES ('{alert_identifier}', CURRENT_TIMESTAMP, '{alert_deduplication_key}', {alert_deduplication_value}, '{message}')
-    """.format(alert_identifier=alert_identifier, alert_deduplication_key=alert_deduplication_key, alert_deduplication_value=alert_deduplication_value,message=message)
+    VALUES ({alert_identifier}, CURRENT_TIMESTAMP, {alert_deduplication_key}, {alert_deduplication_value}, {message})
+    """
+    update_history_table_parameters = {
+        'alert_identifier': alert_identifier,
+        'alert_deduplication_key': alert_deduplication_key,
+        'alert_deduplication_value': alert_deduplication_value,
+        'message': message
+    }
     logger.debug(f"Adding {alert_deduplication_key} with {alert_deduplication_value} for {alert_identifier} to history table.")
-    exa_connection.execute(update_history_table_query)
+    exa_connection.execute(update_history_table_query, update_history_table_parameters)
 
 
 def check_alert_history_if_should_send(exa_connection, alert_identifier, alert_deduplication_key, current_alert_deduplication_value, resend_threshold=0):
@@ -206,12 +212,16 @@ def check_alert_history_if_should_send(exa_connection, alert_identifier, alert_d
         ALERT_DEDUPLICATION_VALUE
     FROM DATA_SERVICES.SLACK_ALERT_HISTORY
     WHERE LAST_ALERT > CURRENT_DATE
-    AND ALERT_IDENTIFIER = '{alert_identifier}'
-    AND ALERT_DEDUPLICATION_KEY = '{alert_deduplication_key}'
+    AND ALERT_IDENTIFIER = {alert_identifier}
+    AND ALERT_DEDUPLICATION_KEY = {alert_deduplication_key}
     ORDER BY LAST_ALERT DESC
     LIMIT 1;
-    """.format(alert_identifier=alert_identifier, alert_deduplication_key=alert_deduplication_key)
-    threshold_check_result = exa_connection.execute(threshold_check_query).fetchall()
+    """
+    threshold_check_parameters = {
+        'alert_identifier': alert_identifier,
+        'alert_deduplication_key': alert_deduplication_key
+    }
+    threshold_check_result = exa_connection.execute(threshold_check_query, threshold_check_parameters).fetchall()
     if len(threshold_check_result) == 0:
         logger.info(f"No alert for {alert_deduplication_key} in {alert_identifier} sent so far. Should send one now.")
         should_send_alert = True
