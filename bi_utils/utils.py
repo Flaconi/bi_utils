@@ -176,7 +176,7 @@ def update_slack_alert_history(exa_connection, alert_identifier, alert_deduplica
     logger = set_logging()
     update_history_table_query = """
     INSERT INTO DATA_SERVICES.SLACK_ALERT_HISTORY 
-    VALUES ('{alert_identifier}', CURRENT_TIMESTAMP, '{alert_deduplication_key}', {alert_deduplication_value}, '{message}')
+    VALUES ({alert_identifier}, CURRENT_TIMESTAMP, {alert_deduplication_key}, {alert_deduplication_value}, {message})
     """
     update_history_table_parameters = {
         'alert_identifier': alert_identifier,
@@ -212,8 +212,8 @@ def check_alert_history_if_should_send(exa_connection, alert_identifier, alert_d
         ALERT_DEDUPLICATION_VALUE
     FROM DATA_SERVICES.SLACK_ALERT_HISTORY
     WHERE LAST_ALERT > CURRENT_DATE
-    AND ALERT_IDENTIFIER = '{alert_identifier}'
-    AND ALERT_DEDUPLICATION_KEY = '{alert_deduplication_key}'
+    AND ALERT_IDENTIFIER = {alert_identifier}
+    AND ALERT_DEDUPLICATION_KEY = {alert_deduplication_key}
     ORDER BY LAST_ALERT DESC
     LIMIT 1;
     """
