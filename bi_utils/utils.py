@@ -431,10 +431,13 @@ def extract_key(dictionary, path):
 def parse_timestamp(x):
     """
     timestamps that are in the format of 2019-12-12T15:22:04.558Z
+    in case timestamp is e.g. nan also return none
     :param x: wrong timestamp format
     :return: corrected timestamp format compatible with Exasol as string
     """
     if x is None:
+        return None
+    elif len(str(x)) < 5:
         return None
     else:
         return x[0:10] + ' ' + x[11:-1]
