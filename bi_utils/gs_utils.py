@@ -3,6 +3,7 @@ Created by anna.anisienia on 25/11/2019
 """
 import pandas as pd
 import pickle
+import time
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
@@ -10,7 +11,7 @@ import os.path
 from bi_utils.utils import set_logging
 
 
-def load_google_spreadsheet_to_df(spreadsheet_id, cell_range, header=True, render_format='FORMATTED_VALUE'):
+def load_google_spreadsheet_to_df(spreadsheet_id, cell_range, header=True, render_format='FORMATTED_VALUE', num_retries=6, interval_retry=10):
     """
     Uses Sheets API. The file token.pickle stores the user's access and refresh tokens, and is created automatically
     when the authorization flow completes for the first time.
@@ -23,6 +24,8 @@ def load_google_spreadsheet_to_df(spreadsheet_id, cell_range, header=True, rende
                 https://docs.google.com/spreadsheets/d/1pyx0eyQPsWrHEaacK0dwaJL4zO-LNVGh0RHZueox_lA/edit#gid=0
     :param cell_range: ex. 'Sheet1' or 'Sheet1!A2:E10'
     :param header: if True, the first row, which is the header (list of column names) will be removed
+    :param num_retries: how often the code should try to read data from google spreadsheet, as it sometimes fails due to connection issues.
+    :param interval_retry: how long to wait between each retry in seconds
     :return: pandas df
     """
     logger = set_logging()
@@ -45,10 +48,17 @@ def load_google_spreadsheet_to_df(spreadsheet_id, cell_range, header=True, rende
     # -----------------------------------------------------------------------------------------------------------------
     # Get values from the spreadsheet
     # -----------------------------------------------------------------------------------------------------------------
-    service = build('sheets', 'v4', credentials=creds)  # Call the Sheets API - version 4
-    sheet_values = service.spreadsheets().values().get(spreadsheetId=spreadsheet_id,
-                                                       valueRenderOption=render_format,  # could be also UNFORMATTED_VALUE
-                                                       range=cell_range).execute()
+    for attempt in range(num_retries):
+        try:
+            service = build('sheets', 'v4', credentials=creds)  # Call the Sheets API - version 4
+            sheet_values = service.spreadsheets().values().get(spreadsheetId=spreadsheet_id,
+                                                               valueRenderOption=render_format,  # could be also UNFORMATTED_VALUE
+                                                               range=cell_range).execute()
+        except:
+            time.sleep(interval_retry)
+        else:
+            logger.info('Succeeded in try number {attempt}'.format(attempt=attempt+1))
+            break
     data = sheet_values.get('values')
     if not data:
         logger.info('No data found in the spreadsheet.')
