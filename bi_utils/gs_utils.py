@@ -48,14 +48,14 @@ def load_google_spreadsheet_to_df(spreadsheet_id, cell_range, header=True, rende
     # -----------------------------------------------------------------------------------------------------------------
     # Get values from the spreadsheet
     # -----------------------------------------------------------------------------------------------------------------
-    for attempt in range(num_retries):
+    for attempt in range(num_retries): # In case of connection issues retry for set amount of time. Default is 6 times.
         try:
             service = build('sheets', 'v4', credentials=creds)  # Call the Sheets API - version 4
             sheet_values = service.spreadsheets().values().get(spreadsheetId=spreadsheet_id,
                                                                valueRenderOption=render_format,  # could be also UNFORMATTED_VALUE
                                                                range=cell_range).execute()
         except:
-            time.sleep(interval_retry)
+            time.sleep(interval_retry) # Waits for set amount of times before retry, default is 10 seconds.
         else:
             logger.info('Succeeded in try number {attempt}'.format(attempt=attempt+1))
             break
