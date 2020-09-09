@@ -54,8 +54,10 @@ def load_google_spreadsheet_to_df(spreadsheet_id, cell_range, header=True, rende
             sheet_values = service.spreadsheets().values().get(spreadsheetId=spreadsheet_id,
                                                                valueRenderOption=render_format,  # could be also UNFORMATTED_VALUE
                                                                range=cell_range).execute()
-        except:
-            time.sleep(interval_retry) # Waits for set amount of times before retry, default is 10 seconds.
+        except Exception as e:
+            logger.info('Failed try number {attempt}'.format(attempt=attempt+1))
+            logger.info('Error Message: {error}'.format(error=str(e)))
+            time.sleep((attempt+1)*interval_retry) # Waits for set amount of times before retry, increase wait time for every failed attempt.
         else:
             logger.info('Succeeded in try number {attempt}'.format(attempt=attempt+1))
             break
