@@ -348,11 +348,7 @@ def execute_sql_script(filename, exa_conn):
     sql_script = open(filename, 'r')  # Open and read the file as a single buffer
     query = sql_script.read()
     sql_script.close()
-    try:
-        exa_conn.execute(query)
-    except Exception as exc:
-        logger.info(f"Couldn't read the query. Error msg: {exc}")
-
+    exa_conn.execute(query)
 
 # =================================================================================================================
 # HELPER FUNCTIONS
