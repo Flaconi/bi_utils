@@ -513,7 +513,8 @@ def check_column_length(exa_connection, stage_schema, stage_table, column_list, 
     current_column_lenghts = exa_connection.export_to_pandas(check_current_state_sql)
     new_column_lengths = pd.DataFrame(columns=['COLUMN_NAME','NEW_MAX_SIZE'])
     for name, values in dataframe.iteritems():
-        temp_df = pd.DataFrame([[name,dataframe[name].str.len().max()]], columns=['COLUMN_NAME','NEW_MAX_SIZE'])
+        # Cast the column as string type else we can not recover max_length
+        temp_df = pd.DataFrame([[name,dataframe[name].astype(str).str.len().max()]], columns=['COLUMN_NAME','NEW_MAX_SIZE'])
         new_column_lengths=new_column_lengths.append(temp_df, ignore_index=True)
     compare_df = current_column_lenghts.join(new_column_lengths.set_index('COLUMN_NAME'), on='COLUMN_NAME')
     for i,row in compare_df.iterrows():
@@ -530,8 +531,6 @@ def check_column_length(exa_connection, stage_schema, stage_table, column_list, 
                     alter_column_length(exa_connection=exa_connection, schema=vault_schema, table=vault_table, column=row['COLUMN_NAME'], column_type='DECIMAL', new_column_length=row['NEW_MAX_SIZE'])
             else:
                 logger.info('Length of {} should not be changed, please look up manually'.format(row['COLUMN_NAME']))
-        else:
-            logger.info('Nothing to do!')
     logger.info('All adjustments are done!')
 
 
