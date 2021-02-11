@@ -517,7 +517,9 @@ def check_column_length(exa_connection, stage_schema, stage_table, column_list, 
         new_column_lengths=new_column_lengths.append(temp_df, ignore_index=True)
     compare_df = current_column_lenghts.join(new_column_lengths.set_index('COLUMN_NAME'), on='COLUMN_NAME')
     for i,row in compare_df.iterrows():
+        # only need to increase max column length if incoming max length is greater than current max length
         if row['NEW_MAX_SIZE']>row['CURRENT_MAX_SIZE']:
+            # We only want to change legnth of columns with datatype varchar or decimal, varchar-> id=12 and decimal -> id=3
             if row['COLUMN_TYPE_ID'] == 12:
                 alter_column_length(exa_connection=exa_connection, schema=stage_schema, table=stage_table, column=row['COLUMN_NAME'], column_type='VARCHAR', new_column_length=row['NEW_MAX_SIZE'])
                 if vault_schema != '' and vault_table!='':
