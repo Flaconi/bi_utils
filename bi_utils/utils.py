@@ -175,7 +175,7 @@ def update_slack_alert_history(exa_connection, alert_identifier, alert_deduplica
     """
     logger = set_logging()
     update_history_table_query = """
-    INSERT INTO DATA_SERVICES.SLACK_ALERT_HISTORY 
+    INSERT INTO DATA_SERVICES.SLACK_ALERT_HISTORY
     VALUES ({alert_identifier}, CURRENT_TIMESTAMP, {alert_deduplication_key}, {alert_deduplication_value}, {message})
     """
     update_history_table_parameters = {
@@ -208,7 +208,7 @@ def check_alert_history_if_should_send(exa_connection, alert_identifier, alert_d
     logger = set_logging()
     should_send_alert = False  # default
     threshold_check_query = """
-    SELECT 
+    SELECT
         ALERT_DEDUPLICATION_VALUE
     FROM DATA_SERVICES.SLACK_ALERT_HISTORY
     WHERE LAST_ALERT > CURRENT_DATE
@@ -289,7 +289,7 @@ def merge_tmp_into_target_tbl(exa_connection, dataframe, pk_columns,
     merge_query += ''');'''
     connection.execute(merge_query.format(schema=exasol_schema, tbl=exasol_table,
                                           schema_tmp=tmp_schema, tbl_tmp=tmp_table))
-    check_df = connection.export_to_pandas(f"""SELECT COUNT(*) AS COUNT_ROWS FROM {exasol_schema}.{exasol_table} 
+    check_df = connection.export_to_pandas(f"""SELECT COUNT(*) AS COUNT_ROWS FROM {exasol_schema}.{exasol_table}
                                     WHERE TO_DATE(UPDATE_TIMESTAMP) = CURRENT_DATE;""")
     logger.info(f"""{check_df["COUNT_ROWS"][0]} rows inserted today.""")
     logger.info("-------------- MERGE TO {}.{} COMPLETE -----------------------".format(exasol_schema, exasol_table))
@@ -489,3 +489,65 @@ def print_merge_query(pk_columns, exasol_schema, exasol_table, temp_schema=None,
 
     merge_query += ''');'''
     print(merge_query.format(schema=exasol_schema, tbl=exasol_table, schema_tmp=tmp_schema, tbl_tmp=tmp_table))
+
+
+def check_column_length(exa_connection, stage_schema, stage_table, column_list, dataframe, vault_schema='', vault_table =''):
+    """
+    Function to check length of incoming data to adapt column max size in dwh if necessary
+    :param exa_connection: name of the connection object
+    :param stage_schema: name of the schema
+    :param stage_table: name of the table
+    :param column_list: list of columns we want to check
+    :param dataframe: incoming data which we want to compare
+    :param vault_schema: optional vault schma name if we also want to adapt table in vault
+    :param vault_table: optional vault table name if we also want to adapt table in vault
+    """
+    logger = set_logging()
+
+    table_filter = f'''WHERE  COLUMN_SCHEMA = '{stage_schema}' AND COLUMN_TABLE= '{stage_table}' '''
+    columns=', '.join(["'%s'" % w for w in column_list])
+    column_filter= f'''AND COLUMN_NAME IN ({columns})'''
+    check_current_state_sql = '''SELECT COLUMN_NAME, COLUMN_MAXSIZE AS CURRENT_MAX_SIZE, COLUMN_TYPE_ID FROM SYS.EXA_ALL_COLUMNS ''' + table_filter + column_filter
+
+    logger.info('Get current column lenghts')
+    current_column_lenghts = exa_connection.export_to_pandas(check_current_state_sql)
+    new_column_lengths = pd.DataFrame(columns=['COLUMN_NAME','NEW_MAX_SIZE'])
+    for name, values in dataframe.iteritems():
+        temp_df = pd.DataFrame([[name,dataframe[name].str.len().max()]], columns=['COLUMN_NAME','NEW_MAX_SIZE'])
+        new_column_lengths=new_column_lengths.append(temp_df, ignore_index=True)
+    compare_df = current_column_lenghts.join(new_column_lengths.set_index('COLUMN_NAME'), on='COLUMN_NAME')
+    for i,row in compare_df.iterrows():
+        if row['NEW_MAX_SIZE']>row['CURRENT_MAX_SIZE']:
+            if row['COLUMN_TYPE_ID'] == 12:
+                alter_column_length(exa_connection=exa_connection, schema=stage_schema, table=stage_table, column=row['COLUMN_NAME'], column_type='VARCHAR', new_column_length=row['NEW_MAX_SIZE'])
+                if vault_schema != '' and vault_table!='':
+                    alter_column_length(exa_connection=exa_connection, schema=vault_schema, table=vault_table, column=row['COLUMN_NAME'], column_type='VARCHAR', new_column_length=row['NEW_MAX_SIZE'])
+            elif row['COLUMN_TYPE_ID'] == 3:
+                alter_column_length(exa_connection=exa_connection, schema=stage_schema, table=stage_table, column=row['COLUMN_NAME'], column_type='DECIMAL', new_column_length=row['NEW_MAX_SIZE'])
+                if vault_schema != '' and vault_table!='':
+                    alter_column_length(exa_connection=exa_connection, schema=vault_schema, table=vault_table, column=row['COLUMN_NAME'], column_type='DECIMAL', new_column_length=row['NEW_MAX_SIZE'])
+            else:
+                logger.info('Length of {} should not be changed, please look up manually'.format(row['COLUMN_NAME']))
+        else:
+            logger.info('Nothing to do!')
+    logger.info('All adjustments are done!')
+
+
+def alter_column_length(exa_connection, schema, table, column, column_type, new_column_length):
+    """
+    ddl function to change column_max_size of a column in a table
+    :param exa_connection: name of the connection object
+    :param schema: name of the schema in dwh
+    :param table: name of the table in dwh
+    :param column: name of the column we want to change
+    :param column_type: datatype of the column (e.g VARCHAR)
+    :param new_column_length: new length we want to set
+    """
+    logger = set_logging()
+    alter_statement = '''ALTER TABLE {schema}.{table} MODIFY COLUMN {column} {column_type}({column_length})'''.format(schema = schema, table = table, column = column, column_type = column_type, column_length = new_column_length)
+    logger.info("Changed length of column {column} in {schema}.{table} to {column_length}".format(schema = schema, table = table, column = column, column_length = new_column_length))
+    try:
+        exa_connection.execute(alter_statement)
+    except Exception as exc:
+        logger.error(f'Error msg: {exc}')
+        exit(1)
