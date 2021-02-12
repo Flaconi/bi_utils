@@ -491,7 +491,7 @@ def print_merge_query(pk_columns, exasol_schema, exasol_table, temp_schema=None,
     print(merge_query.format(schema=exasol_schema, tbl=exasol_table, schema_tmp=tmp_schema, tbl_tmp=tmp_table))
 
 
-def check_column_length(exa_connection, stage_schema, stage_table, column_list, dataframe, vault_schema='', vault_table =''):
+def check_column_length(exa_connection, stage_schema, stage_table, column_list, dataframe, additional_schema='', additional_table =''):
     """
     Function to check length of incoming data to adapt column max size in dwh if necessary
     :param exa_connection: name of the connection object
@@ -499,8 +499,8 @@ def check_column_length(exa_connection, stage_schema, stage_table, column_list, 
     :param stage_table: name of the table
     :param column_list: list of columns we want to check
     :param dataframe: incoming data which we want to compare
-    :param vault_schema: optional vault schma name if we also want to adapt table in vault
-    :param vault_table: optional vault table name if we also want to adapt table in vault
+    :param additional_schema: optional additional schma name (e.g. tmp schema)
+    :param additional_table: optional additional table name (e.g. tmp table)
     """
     logger = set_logging()
 
@@ -513,7 +513,8 @@ def check_column_length(exa_connection, stage_schema, stage_table, column_list, 
     current_column_lenghts = exa_connection.export_to_pandas(check_current_state_sql)
     new_column_lengths = pd.DataFrame(columns=['COLUMN_NAME','NEW_MAX_SIZE'])
     for name, values in dataframe.iteritems():
-        temp_df = pd.DataFrame([[name,dataframe[name].str.len().max()]], columns=['COLUMN_NAME','NEW_MAX_SIZE'])
+        # Cast the column as string type else we can not recover max_length
+        temp_df = pd.DataFrame([[name,dataframe[name].astype(str).str.len().max()]], columns=['COLUMN_NAME','NEW_MAX_SIZE'])
         new_column_lengths=new_column_lengths.append(temp_df, ignore_index=True)
     compare_df = current_column_lenghts.join(new_column_lengths.set_index('COLUMN_NAME'), on='COLUMN_NAME')
     for i,row in compare_df.iterrows():
@@ -522,16 +523,14 @@ def check_column_length(exa_connection, stage_schema, stage_table, column_list, 
             # We only want to change legnth of columns with datatype varchar or decimal, varchar-> id=12 and decimal -> id=3
             if row['COLUMN_TYPE_ID'] == 12:
                 alter_column_length(exa_connection=exa_connection, schema=stage_schema, table=stage_table, column=row['COLUMN_NAME'], column_type='VARCHAR', new_column_length=row['NEW_MAX_SIZE'])
-                if vault_schema != '' and vault_table!='':
-                    alter_column_length(exa_connection=exa_connection, schema=vault_schema, table=vault_table, column=row['COLUMN_NAME'], column_type='VARCHAR', new_column_length=row['NEW_MAX_SIZE'])
+                if additional_schema != '' and additional_table!='':
+                    alter_column_length(exa_connection=exa_connection, schema=additional_schema, table=additional_table, column=row['COLUMN_NAME'], column_type='VARCHAR', new_column_length=row['NEW_MAX_SIZE'])
             elif row['COLUMN_TYPE_ID'] == 3:
                 alter_column_length(exa_connection=exa_connection, schema=stage_schema, table=stage_table, column=row['COLUMN_NAME'], column_type='DECIMAL', new_column_length=row['NEW_MAX_SIZE'])
-                if vault_schema != '' and vault_table!='':
-                    alter_column_length(exa_connection=exa_connection, schema=vault_schema, table=vault_table, column=row['COLUMN_NAME'], column_type='DECIMAL', new_column_length=row['NEW_MAX_SIZE'])
+                if additional_schema != '' and additional_table!='':
+                    alter_column_length(exa_connection=exa_connection, schema=additional_schema, table=additional_table, column=row['COLUMN_NAME'], column_type='DECIMAL', new_column_length=row['NEW_MAX_SIZE'])
             else:
                 logger.info('Length of {} should not be changed, please look up manually'.format(row['COLUMN_NAME']))
-        else:
-            logger.info('Nothing to do!')
     logger.info('All adjustments are done!')
 
 
@@ -552,4 +551,3 @@ def alter_column_length(exa_connection, schema, table, column, column_type, new_
         exa_connection.execute(alter_statement)
     except Exception as exc:
         logger.error(f'Error msg: {exc}')
-        exit(1)
