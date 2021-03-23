@@ -16,17 +16,17 @@ def parse_exa_to_ct_timestamp(exa_time):
     return timestamp
 
 
-def get_max_modified_date_from_dwh(tbl_name='ORDERS', timestamp_colname='LAST_MODIFIED_AT', diff_in_min=60):
+def get_max_modified_date_from_dwh(tbl_name='ORDERS', timestamp_colname='LAST_MODIFIED_AT', diff_in_sec=3):
     """
     Get the latest timestamp from CT table - used for Delta Load
     :param tbl_name: CT table
     :param timestamp_colname: timestamp column that we want to use for Delta Load
-    :param diff_in_min: go back X number of minutes from the last timestamp
+    :param diff_in_sec: go back X number of seconds from the last timestamp
     :return: the latest timestamp
     """
     conn = return_exa_conn()
     # with INTERVAL MINUTE, HOUR and DAY Exasol only allows values below 100, so diff_in_min can be between 0 and 99
-    q = f"""SELECT MAX({timestamp_colname}) - INTERVAL '{diff_in_min}' MINUTE FROM STAGE_COMMERCETOOL.{tbl_name};"""
+    q = f"""SELECT MAX({timestamp_colname}) - INTERVAL '{diff_in_sec}' SECOND FROM STAGE_COMMERCETOOL.{tbl_name};"""
     t = conn.export_to_list(q)
     conn.close()
     if len(t[0]) > 0:  # i.e. if the DWH table is not empty
@@ -181,7 +181,7 @@ def normalize_final_df(dframe, cols_to_exclude_from_explode):
 
 
 def ct_pagination_by_sort_key(ct_client_id, clt_client_pwd, endpoint, sort_key, max_timestamp=None,
-                              columns=None, cols_to_exclude=None, staged=True,
+                              columns=None, cols_to_exclude=None, staged=True, max_iterations=250,
                               base_url='https://api.europe-west1.gcp.commercetools.com/flaconi-prod/'):
     """
     simple batch pagnination for each endpoint with the option to define whether only certain
@@ -195,10 +195,13 @@ def ct_pagination_by_sort_key(ct_client_id, clt_client_pwd, endpoint, sort_key, 
     :param cols_to_exclude: list of columns which we don't want to explode and normalize
     :param staged: if staged is set to False, then &staged=false will be added to the request. It's used for product-projections
             (to just get the current and not staged data) - replaces ct_pagination_current_products_by_sort_key()
+    :max_iterations: number of batch iterations. we limit the default to 250 to not get more than 125k records to avoid memory issues
+                     this is a potential issues. in a follow up ticket we will change this
     :param base_url: by default points to flaconi-prod, but it could be flaconi-stage or -dev
     :return: df concatenated from all API requests + transformed
     """
     # make full load from 2020-01-01 if provided max_timestamp is None
+    iteration = 0
     max_time = max_timestamp if max_timestamp is not None else '2020-01-01T00:00:00'  # TODO: adapt after go live if necessary
     logger.info(f"MAX TIMESTAMP provided for the API request: {max_time}")
 
@@ -238,11 +241,14 @@ def ct_pagination_by_sort_key(ct_client_id, clt_client_pwd, endpoint, sort_key, 
             logger.info(f'Current URL: {full_subs_req_url}')
             response = requests.get(full_subs_req_url, headers=headers)
             results = response.json().get('results')
-            if len(results) > 0:
+            
+            if len(results) > 0 and iteration < max_iterations:
                 last_sort_value = results[-1][sort_key]
                 logger.info("Next sort value: " + last_sort_value)
                 tmp = process_response_from_commercetools(results, columns, cols_to_exclude)
                 all_dfs_from_ct.append(tmp)
+                iteration += 1
+                logger.info(f'Iteration {iteration} from at most {max_iterations} iterations')
                 del tmp
                 del response
             else:
