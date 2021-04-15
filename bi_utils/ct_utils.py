@@ -180,8 +180,9 @@ def normalize_final_df(dframe, cols_to_exclude_from_explode):
     return dframe
 
 
-def ct_pagination_by_sort_key(ct_client_id, clt_client_pwd, endpoint, sort_key, max_timestamp=None,
-                              columns=None, cols_to_exclude=None, staged=True, max_iterations=250,
+def ct_pagination_by_sort_key(ct_client_id, clt_client_pwd, endpoint, sort_key, 
+                              max_timestamp=None, columns=None, cols_to_exclude=None, 
+                              staged=True, max_iterations=250, expand='',
                               base_url='https://api.europe-west1.gcp.commercetools.com/flaconi-prod/'):
     """
     simple batch pagnination for each endpoint with the option to define whether only certain
@@ -195,8 +196,9 @@ def ct_pagination_by_sort_key(ct_client_id, clt_client_pwd, endpoint, sort_key, 
     :param cols_to_exclude: list of columns which we don't want to explode and normalize
     :param staged: if staged is set to False, then &staged=false will be added to the request. It's used for product-projections
             (to just get the current and not staged data) - replaces ct_pagination_current_products_by_sort_key()
-    :max_iterations: number of batch iterations. we limit the default to 250 to not get more than 125k records to avoid memory issues
+    :param max_iterations: number of batch iterations. we limit the default to 250 to not get more than 125k records to avoid memory issues
                      this is a potential issues. in a follow up ticket we will change this
+    :param expand: option to add expand to the request to get more information e.g. paymentInfo.payments[*]             
     :param base_url: by default points to flaconi-prod, but it could be flaconi-stage or -dev
     :return: df concatenated from all API requests + transformed
     """
@@ -208,7 +210,7 @@ def ct_pagination_by_sort_key(ct_client_id, clt_client_pwd, endpoint, sort_key, 
     headers = get_ct_token(ct_client_id, clt_client_pwd)
 
     # initial request's URL. Example: base_url + orders?where=lastModifiedAt%3E%3D%222020-05-29T18%3A05%3A40%22&limit=500&offset=0&sort=lastModifiedAt%20asc
-    init_req_url = base_url + endpoint + '?where=' + sort_key + '%3E%3D%22' + max_time + '%22&limit=500&sort=' + sort_key + '%20asc' + '&withTotal=false'
+    init_req_url = base_url + endpoint + '?where=' + sort_key + '%3E%3D%22' + max_time + '%22&limit=500&sort=' + sort_key + '%20asc' + '&withTotal=false' + expand
     if staged:
         full_url_init_req = init_req_url
     else:
@@ -232,7 +234,7 @@ def ct_pagination_by_sort_key(ct_client_id, clt_client_pwd, endpoint, sort_key, 
 
         while True:
             # make subsequent API requests
-            subs_req_url = base_url + endpoint + '?limit=500&withTotal=false&sort=' + sort_key + '+asc&where=' + sort_key + '%3E"' + last_sort_value + '"'
+            subs_req_url = base_url + endpoint + '?limit=500&withTotal=false&sort=' + sort_key + '+asc&where=' + sort_key + '%3E"' + last_sort_value + '"' + expand
             if staged:
                 full_subs_req_url = subs_req_url
             else:
