@@ -16,13 +16,13 @@ def parse_exa_to_ct_timestamp(exa_time):
     return timestamp
 
 
-def get_max_modified_date_from_dwh(tbl_name='ORDERS', timestamp_colname='LAST_MODIFIED_AT', diff_in_sec=3):
+def get_max_modified_date_from_dwh(tbl_name, timestamp_colname, diff_in_sec=3):
     """
-    Get the latest timestamp from CT table - used for Delta Load
-    :param tbl_name: CT table
+    Get the latest timestamp from a table that exists in STAGE_COMMERCETOOL - used for Delta Load
+    :param tbl_name: commercetools table name
     :param timestamp_colname: timestamp column that we want to use for Delta Load
     :param diff_in_sec: go back X number of seconds from the last timestamp
-    :return: the latest timestamp
+    :return: the latest timestamp from tbl_name
     """
     conn = return_exa_conn()
     # with INTERVAL MINUTE, HOUR and DAY Exasol only allows values below 100, so diff_in_min can be between 0 and 99
