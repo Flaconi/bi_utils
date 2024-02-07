@@ -297,7 +297,7 @@ def ct_pagination_by_sort_key_limit(ct_client_id, clt_client_pwd, endpoint, sort
     headers = get_ct_token(ct_client_id, clt_client_pwd)
 
     # initial request's URL. Example: base_url + orders?where=lastModifiedAt%3E%3D%222020-05-29T18%3A05%3A40%22&limit=500&offset=0&sort=lastModifiedAt%20asc
-    init_req_url = base_url + endpoint + '?where=' + sort_key + '%3E%3D%22' + max_time + '%22&limit=' + limit + '&sort=' + sort_key + '%20asc' + '&withTotal=false' + expand
+    init_req_url = base_url + endpoint + '?where=' + sort_key + '%3E%3D%22' + max_time + '%22&limit=' + str(limit) + '&sort=' + sort_key + '%20asc' + '&withTotal=false' + expand
     if staged:
         full_url_init_req = init_req_url
     else:
@@ -321,7 +321,7 @@ def ct_pagination_by_sort_key_limit(ct_client_id, clt_client_pwd, endpoint, sort
 
         while True:
             # make subsequent API requests
-            subs_req_url = base_url + endpoint + '?limit=' + limit + '&withTotal=false&sort=' + sort_key + '+asc&where=' + sort_key + '%3E"' + last_sort_value + '"' + expand
+            subs_req_url = base_url + endpoint + '?limit=' + str(limit) + '&withTotal=false&sort=' + sort_key + '+asc&where=' + sort_key + '%3E"' + last_sort_value + '"' + expand
             if staged:
                 full_subs_req_url = subs_req_url
             else:
