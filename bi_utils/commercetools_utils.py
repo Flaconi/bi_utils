@@ -242,3 +242,81 @@ def ct_pagination_by_sort_key(ct_client_id, clt_client_pwd, endpoint, sort_key, 
                 break
         logger.info(f"Shape of the final df after pagination: {df.shape}")
         return df
+
+def ct_pagination_by_sort_key_limit(ct_client_id, clt_client_pwd, endpoint, sort_key, max_timestamp=None,
+                              columns=None, cols_to_exclude=None, staged=True, limit=250, max_iterations=500):
+    """
+    simple batch pagnination for each endpoint with the option to define whether only certain
+    columns should be normalized - and results are sorted (recommended way)
+    :param ct_client_id: CLIENT ID from commercetool for auth
+    :param clt_client_pwd: CLIENT PWD from commercetool for auth
+    :param endpoint: e.g. products, categories, orders, ...
+    :param sort_key: column to sort by
+    :param max_timestamp: MAX(timestamp) from CT table - we then make API request for all entries >= max_timestamp. Fallback: 01.01.2020
+    :param columns: default None, which means all columns - otherwise needs column specification
+    :param cols_to_exclude: list of columns which we don't want to explode and normalize
+    :param staged: if staged is set to False, then &staged=false will be added to the request. It's used for product-projections
+            (to just get the current and not staged data) - replaces ct_pagination_current_products_by_sort_key()
+    :param max_iterations: number of batch iterations. we limit the default to 250 to not get more than 125k records to avoid memory issues
+                     this is a potential issues. in a follow up ticket we will change this
+    :return: df concatenated from all API requests + transformed
+    """
+    if limit>250:
+        logger.info(f'The limit {limit} is higher than allowed. It should not be higher than 250.')
+        raise ValueError("An error occurred in ct_pagination_by_sort_key_limit")
+    
+    # make full load from 2020-01-01 if provided max_timestamp is None
+    iteration = 0
+    max_time = max_timestamp if max_timestamp is not None else '2020-01-01T00:00:00'  # TODO: adapt after go live if necessary
+    logger.info(f"MAX TIMESTAMP provided for the API request: {max_time}")
+
+    headers = get_ct_token(ct_client_id, clt_client_pwd)
+    base_url = 'https://api.europe-west1.gcp.commercetools.com/flaconi-prod/'
+
+    # initial request's URL. Example: base_url + orders?where=lastModifiedAt%3E%3D%222020-05-29T18%3A05%3A40%22&limit=500&offset=0&sort=lastModifiedAt%20asc
+    init_req_url = base_url + endpoint + '?where=' + sort_key + '%3E%3D%22' + max_time + '%22&limit=' + str(limit) + '&sort=' + sort_key + '%20asc' + '&withTotal=false'
+    if staged:
+        full_url_init_req = init_req_url
+    else:
+        full_url_init_req = init_req_url + '&staged=false'
+
+    # make the initial API request and then start pagination
+    logger.info(f"INITIAL REQUEST URL: {full_url_init_req}")
+    initial_request = requests.get(full_url_init_req, headers=headers)
+    initial_request_json = initial_request.json()
+    status_code = initial_request_json.get('statusCode')
+    msg = initial_request_json.get('message')
+    res = initial_request_json.get('results')
+    if not res:  # i.e. res is either None or []
+        logger.info(f'Request failed. We got status code: {status_code}. Error message: {msg}. ' +
+                    f'Full response JSON: {initial_request_json}')
+    else:
+        df = process_response_from_commercetools(initial_request_json['results'], columns, cols_to_exclude)
+        last_sort_value = initial_request_json['results'][-1][sort_key]
+        logger.info("Current sort value: " + last_sort_value)
+
+        while True:
+            # make subsequent API requests
+            subs_req_url = base_url + endpoint + '?limit=' + str(limit) + '&withTotal=false&sort=' + sort_key + '+asc&where=' + sort_key + '%3E"' + last_sort_value + '"'
+            if staged:
+                full_subs_req_url = subs_req_url
+            else:
+                full_subs_req_url = subs_req_url + '&staged=false'
+
+            logger.info(f'Current URL: {full_subs_req_url}')
+            response = requests.get(full_subs_req_url, headers=headers)
+            results = response.json().get('results')
+            
+            if len(results) > 0 and iteration < max_iterations:
+                last_sort_value = results[-1][sort_key]
+                logger.info("Next sort value: " + last_sort_value)
+                tmp = process_response_from_commercetools(results, columns, cols_to_exclude)
+                df = pd.concat([tmp, df], copy=False, ignore_index=True)  # combine df's
+                iteration += 1
+                logger.info(f'Iteration {iteration} from at most {max_iterations} iterations')
+                del tmp
+                del response
+            else:
+                break
+        logger.info(f"Shape of the final df after pagination: {df.shape}")
+        return df
