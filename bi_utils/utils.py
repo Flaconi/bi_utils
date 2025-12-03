@@ -516,7 +516,8 @@ def check_column_length(exa_connection, stage_schema, stage_table, column_list, 
     for name, values in dataframe.items():
         # Cast the column as string type else we can not recover max_length
         temp_df = pd.DataFrame([[name,dataframe[name].astype(str).str.len().max()]], columns=['COLUMN_NAME','NEW_MAX_SIZE'])
-        new_column_lengths=new_column_lengths.append(temp_df, ignore_index=True)
+        # new_column_lengths=new_column_lengths.append(temp_df, ignore_index=True)
+        new_column_lengths = pd.concat([new_column_lengths, temp_df], ignore_index=True)
     compare_df = current_column_lenghts.join(new_column_lengths.set_index('COLUMN_NAME'), on='COLUMN_NAME')
     for i,row in compare_df.iterrows():
         # only need to increase max column length if incoming max length is greater than current max length
