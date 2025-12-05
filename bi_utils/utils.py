@@ -272,7 +272,8 @@ def merge_tmp_into_target_tbl(exa_connection, dataframe, pk_columns,
     # remove pk_columns, otherwise we would be updating columns of ON-condition
     cols_not_to_merge = pk_columns_list + ["INSERT_TIMESTAMP", "UPDATE_TIMESTAMP"]
     # logger.info("COLS NOT TO MERGE: {}".format(cols_not_to_merge))
-    dataframe.columns = dataframe.columns.str.strip()
+    # dataframe.columns = dataframe.columns.str.strip()
+    dataframe.columns = dataframe.columns.map(str.strip)
     cols_merge = [col for col in dataframe.columns if col not in cols_not_to_merge]
     # logger.info("COLS TO MERGE: {}".format(cols_merge))
     for i in cols_merge:
@@ -474,7 +475,8 @@ def print_merge_query(pk_columns, exasol_schema, exasol_table, temp_schema=None,
 
     # remove pk_columns, otherwise we would be updating columns of ON-condition
     cols_not_to_merge = pk_columns_list + ["INSERT_TIMESTAMP", "UPDATE_TIMESTAMP"]
-    dataframe.columns = dataframe.columns.str.strip()
+    # dataframe.columns = dataframe.columns.str.strip()
+    dataframe.columns = dataframe.columns.map(str.strip)
     cols_merge = [col for col in dataframe.columns if col not in cols_not_to_merge]
     for i in cols_merge:
         merge_query += ''', target_tbl."''' + i.strip() + '''" = tmp."''' + i.strip() + '''"'''
