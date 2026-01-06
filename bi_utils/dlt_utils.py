@@ -26,7 +26,7 @@ def notify_schema_changes(load_info: LoadInfo) -> None:
             for column_name, column in table["columns"].items():
                 # Construct the message
                 message_lines = [
-                    f"**Warning**, schema-change detected in dlthub-pipeline: `{pipeline_name}`\n"
+                    f"*Warning*, schema-change detected in dlthub-pipeline: `{pipeline_name}`\n"
                     f"Table updated: `{table_name}`\n",
                     f"Column changed: `{column_name}`",
                     f"Data type: `{column['data_type']}`"
